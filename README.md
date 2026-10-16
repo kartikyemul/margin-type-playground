@@ -22,6 +22,8 @@ npm run preview
 
 ## Notes
 
+- Posters can be portrait, square, story or landscape, with a background color you pick when nothing is selected.
+- While dragging, text snaps to the centre and to a 40px margin. Hold Alt to move freely.
 - Save and Restore use your browser's localStorage. Your last saved poster also loads when you reopen the app.
 - Fonts come from Google Fonts, so you need to be online the first time for them to show up.
 - Shortcuts are listed in the side panel when nothing is selected.
