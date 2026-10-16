@@ -1,21 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
-import { CANVAS_W, CANVAS_H, HIGHLIGHT, fontStack } from './constants.js'
+import { HIGHLIGHT, MARGIN, fontStack } from './constants.js'
 
-function Canvas({ elements, selectedId, onSelect, onChange, onEdit }) {
+// Snap one axis: the element's start, middle or end can lock onto the margin or the centre.
+function snapAxis(pos, size, total, threshold) {
+  const options = [
+    { at: pos, goal: MARGIN },
+    { at: pos + size / 2, goal: total / 2 },
+    { at: pos + size, goal: total - MARGIN },
+  ]
+  let best = null
+  options.forEach((o) => {
+    const diff = o.goal - o.at
+    if (Math.abs(diff) <= threshold && (!best || Math.abs(diff) < Math.abs(best.diff))) {
+      best = { diff, goal: o.goal }
+    }
+  })
+  return best ? { pos: pos + best.diff, guide: best.goal } : { pos, guide: null }
+}
+
+function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
   const stageRef = useRef(null)
   const drag = useRef(null)
   const dragCount = useRef(0)
   const [scale, setScale] = useState(0.7)
+  const [guides, setGuides] = useState({ x: null, y: null })
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
-      const fit = Math.min((width - 2) / CANVAS_W, (height - 2) / CANVAS_H)
+      const fit = Math.min((width - 2) / poster.width, (height - 2) / poster.height)
       setScale(Math.max(0.2, Math.min(fit, 1.4)))
     })
     observer.observe(stageRef.current)
     return () => observer.disconnect()
-  }, [])
+  }, [poster.width, poster.height])
 
   function startDrag(e, el) {
     e.stopPropagation()
@@ -40,19 +58,45 @@ function Canvas({ elements, selectedId, onSelect, onChange, onEdit }) {
     const dy = e.clientY - d.startY
     if (!d.moved && Math.hypot(dx, dy) < 3) return
     d.moved = true
-    const x = Math.max(-300, Math.min(CANVAS_W - 30, d.x + dx / scale))
-    const y = Math.max(-200, Math.min(CANVAS_H - 30, d.y + dy / scale))
+
+    let x = d.x + dx / scale
+    let y = d.y + dy / scale
+    let guideX = null
+    let guideY = null
+
+    if (!e.altKey) {
+      const threshold = 6 / scale
+      const sx = snapAxis(x, e.currentTarget.offsetWidth, poster.width, threshold)
+      const sy = snapAxis(y, e.currentTarget.offsetHeight, poster.height, threshold)
+      x = sx.pos
+      y = sy.pos
+      guideX = sx.guide
+      guideY = sy.guide
+    }
+    setGuides({ x: guideX, y: guideY })
+
+    x = Math.max(-300, Math.min(poster.width - 30, x))
+    y = Math.max(-200, Math.min(poster.height - 30, y))
     onChange(d.id, { x: Math.round(x), y: Math.round(y) }, 'drag-' + d.session)
   }
 
   function endDrag() {
     drag.current = null
+    setGuides({ x: null, y: null })
   }
 
   return (
     <div className="stage" ref={stageRef} onPointerDown={() => onSelect(null)}>
-      <div className="poster-frame" style={{ width: CANVAS_W * scale + 2, height: CANVAS_H * scale + 2 }}>
-        <div className="poster" style={{ transform: `scale(${scale})` }}>
+      <div className="poster-frame" style={{ width: poster.width * scale + 2, height: poster.height * scale + 2 }}>
+        <div
+          className="poster"
+          style={{
+            width: poster.width,
+            height: poster.height,
+            background: poster.background,
+            transform: `scale(${scale})`,
+          }}
+        >
           {elements.map((el) => (
             <div
               key={el.id}
@@ -65,6 +109,8 @@ function Canvas({ elements, selectedId, onSelect, onChange, onEdit }) {
                 fontWeight: el.fontWeight,
                 color: el.color,
                 textAlign: el.align,
+                letterSpacing: el.letterSpacing + 'em',
+                '--lh': el.lineHeight,
                 transform: `rotate(${el.rotation}deg)`,
               }}
               onPointerDown={(e) => startDrag(e, el)}
@@ -82,6 +128,8 @@ function Canvas({ elements, selectedId, onSelect, onChange, onEdit }) {
               ))}
             </div>
           ))}
+          {guides.x !== null && <div className="guide guide-v" style={{ left: guides.x }} />}
+          {guides.y !== null && <div className="guide guide-h" style={{ top: guides.y }} />}
         </div>
       </div>
     </div>

@@ -1,15 +1,15 @@
-import { CANVAS_W, CANVAS_H, LINE_HEIGHT, HIGHLIGHT, fontStack } from './constants.js'
+import { HIGHLIGHT, fontStack } from './constants.js'
 
 const SCALE = 3
 
-export async function exportPng(elements) {
+export async function exportPng(elements, poster) {
   const canvas = document.createElement('canvas')
-  canvas.width = CANVAS_W * SCALE
-  canvas.height = CANVAS_H * SCALE
+  canvas.width = poster.width * SCALE
+  canvas.height = poster.height * SCALE
   const ctx = canvas.getContext('2d')
   ctx.scale(SCALE, SCALE)
-  ctx.fillStyle = '#ffffff'
-  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
+  ctx.fillStyle = poster.background
+  ctx.fillRect(0, 0, poster.width, poster.height)
 
   try {
     await Promise.all(
@@ -34,14 +34,32 @@ export async function exportPng(elements) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function lineWidth(ctx, line, spacing) {
+  if (spacing === 0) return ctx.measureText(line).width
+  return [...line].reduce((sum, ch) => sum + ctx.measureText(ch).width + spacing, 0)
+}
+
+function drawLine(ctx, line, x, y, spacing) {
+  if (spacing === 0) {
+    ctx.fillText(line, x, y)
+    return
+  }
+  let cursor = x
+  for (const ch of line) {
+    ctx.fillText(ch, cursor, y)
+    cursor += ctx.measureText(ch).width + spacing
+  }
+}
+
 function drawText(ctx, el) {
   const lines = el.text.split('\n')
-  const lineHeight = el.fontSize * LINE_HEIGHT
+  const lineHeight = el.fontSize * el.lineHeight
+  const spacing = el.fontSize * el.letterSpacing
 
   ctx.font = `${el.fontWeight} ${el.fontSize}px ${fontStack(el.fontFamily)}`
   ctx.textBaseline = 'alphabetic'
 
-  const widths = lines.map((line) => ctx.measureText(line).width)
+  const widths = lines.map((line) => lineWidth(ctx, line, spacing))
   const blockWidth = Math.max(...widths, 1)
   const blockHeight = lineHeight * lines.length
 
@@ -66,7 +84,7 @@ function drawText(ctx, el) {
       ctx.fillRect(left, top, widths[i], lineHeight)
     }
     ctx.fillStyle = el.color
-    ctx.fillText(line, left, top + baseline)
+    drawLine(ctx, line, left, top + baseline, spacing)
   })
 
   ctx.restore()

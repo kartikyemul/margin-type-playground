@@ -17,6 +17,8 @@ export function makeText(props = {}) {
     color: '#000000',
     align: 'left',
     rotation: 0,
+    letterSpacing: 0,
+    lineHeight: 1.1,
     highlight: false,
     ...props,
   }

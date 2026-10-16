@@ -146,10 +146,26 @@ textarea {
   position: absolute;
   top: 0;
   left: 0;
-  width: 600px;
-  height: 800px;
-  background: #fff;
   transform-origin: 0 0;
+}
+
+.guide {
+  position: absolute;
+  background: #000;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.guide-h {
+  left: 0;
+  right: 0;
+  height: 1px;
 }
 
 .text-el {
@@ -157,7 +173,7 @@ textarea {
   width: max-content;
   min-width: 1em;
   white-space: pre;
-  line-height: 1.1;
+  line-height: var(--lh);
   transform-origin: center;
   cursor: move;
   user-select: none;
@@ -175,13 +191,13 @@ textarea {
 }
 
 .line {
-  min-height: 1.1em;
+  min-height: calc(var(--lh) * 1em);
 }
 
 .line-text {
   display: inline-block;
   vertical-align: top;
-  line-height: 1.1;
+  line-height: var(--lh);
 }
 
 /* properties */

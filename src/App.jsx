@@ -4,14 +4,27 @@ import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
 import { STARTERS, buildElements, makeText, newId } from './starters.js'
 import { exportPng } from './exportPng.js'
+import { DEFAULT_POSTER } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
+
+function cleanPoster(saved) {
+  const poster = { ...DEFAULT_POSTER, ...saved }
+  const sizeOk = (n) => Number.isFinite(n) && n >= 200 && n <= 2000
+  if (!sizeOk(poster.width) || !sizeOk(poster.height)) {
+    poster.width = DEFAULT_POSTER.width
+    poster.height = DEFAULT_POSTER.height
+  }
+  if (typeof poster.background !== 'string') poster.background = DEFAULT_POSTER.background
+  return poster
+}
 
 function loadSaved() {
   try {
     const data = JSON.parse(localStorage.getItem(STORAGE_KEY))
     if (data && Array.isArray(data.elements)) {
       return {
+        poster: cleanPoster(data.poster),
         starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
         elements: data.elements.filter((el) => el && typeof el.text === 'string').map((el) => makeText(el)),
       }
@@ -23,9 +36,15 @@ function loadSaved() {
 }
 
 function App() {
-  const [initial] = useState(() => loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours') })
+  const [initial] = useState(
+    () => loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours'), poster: DEFAULT_POSTER }
+  )
   const [starterId, setStarterId] = useState(initial.starterId)
-  const [history, setHistory] = useState({ past: [], elements: initial.elements, future: [] })
+  const [history, setHistory] = useState({
+    past: [],
+    doc: { elements: initial.elements, poster: initial.poster },
+    future: [],
+  })
   const [selectedId, setSelectedId] = useState(null)
   const [toast, setToast] = useState('')
 
@@ -33,7 +52,8 @@ function App() {
   const toastTimer = useRef(null)
   const lastEdit = useRef({ key: null, time: 0 })
 
-  const elements = history.elements
+  const elements = history.doc.elements
+  const poster = history.doc.poster
   const selected = elements.find((el) => el.id === selectedId)
 
   function notify(message) {
@@ -43,6 +63,7 @@ function App() {
   }
 
   // Every change goes through here so undo and redo work.
+  // The "doc" is the whole poster: its text elements plus the poster settings.
   // Changes with the same key in quick succession (dragging, typing, sliders)
   // are merged into a single undo step.
   function commit(change, key = null) {
@@ -50,20 +71,27 @@ function App() {
     const merge = key && lastEdit.current.key === key && now - lastEdit.current.time < 1500
     lastEdit.current = { key, time: now }
     setHistory((h) => ({
-      past: merge ? h.past : [...h.past, h.elements].slice(-100),
-      elements: change(h.elements),
+      past: merge ? h.past : [...h.past, h.doc].slice(-100),
+      doc: change(h.doc),
       future: [],
     }))
   }
 
   function changeElement(id, changes, key = null) {
-    commit((list) => list.map((el) => (el.id === id ? { ...el, ...changes } : el)), key && key + '-' + id)
+    commit(
+      (doc) => ({ ...doc, elements: doc.elements.map((el) => (el.id === id ? { ...el, ...changes } : el)) }),
+      key && key + '-' + id
+    )
+  }
+
+  function changePoster(changes, key = null) {
+    commit((doc) => ({ ...doc, poster: { ...doc.poster, ...changes } }), key && 'poster-' + key)
   }
 
   function addText() {
     const offset = (elements.length % 6) * 24
     const el = makeText({ x: 60 + offset, y: 80 + offset })
-    commit((list) => [...list, el])
+    commit((doc) => ({ ...doc, elements: [...doc.elements, el] }))
     setSelectedId(el.id)
     setTimeout(() => {
       textRef.current?.focus()
@@ -74,14 +102,14 @@ function App() {
   function duplicate() {
     if (!selected) return
     const copy = { ...selected, id: newId(), x: selected.x + 20, y: selected.y + 20 }
-    commit((list) => [...list, copy])
+    commit((doc) => ({ ...doc, elements: [...doc.elements, copy] }))
     setSelectedId(copy.id)
     notify('Duplicated')
   }
 
   function remove() {
     if (!selected) return
-    commit((list) => list.filter((el) => el.id !== selected.id))
+    commit((doc) => ({ ...doc, elements: doc.elements.filter((el) => el.id !== selected.id) }))
     setSelectedId(null)
     notify('Deleted')
   }
@@ -94,10 +122,10 @@ function App() {
       notify(step > 0 ? 'Already in front' : 'Already at the back')
       return
     }
-    commit((list) => {
-      const next = [...list]
+    commit((doc) => {
+      const next = [...doc.elements]
       ;[next[from], next[to]] = [next[to], next[from]]
-      return next
+      return { ...doc, elements: next }
     })
     notify(step > 0 ? 'Brought forward' : 'Sent backward')
   }
@@ -107,8 +135,8 @@ function App() {
     lastEdit.current = { key: null, time: 0 }
     setHistory((h) => ({
       past: h.past.slice(0, -1),
-      elements: h.past[h.past.length - 1],
-      future: [h.elements, ...h.future],
+      doc: h.past[h.past.length - 1],
+      future: [h.doc, ...h.future],
     }))
     notify('Undone')
   }
@@ -117,8 +145,8 @@ function App() {
     if (history.future.length === 0) return
     lastEdit.current = { key: null, time: 0 }
     setHistory((h) => ({
-      past: [...h.past, h.elements],
-      elements: h.future[0],
+      past: [...h.past, h.doc],
+      doc: h.future[0],
       future: h.future.slice(1),
     }))
     notify('Redone')
@@ -127,20 +155,20 @@ function App() {
   function loadStarter(id) {
     const starter = STARTERS.find((s) => s.id === id)
     setStarterId(id)
-    commit(() => buildElements(id))
+    commit(() => ({ elements: buildElements(id), poster: DEFAULT_POSTER }))
     setSelectedId(null)
     notify(starter.name + ' loaded')
   }
 
   function reset() {
-    commit(() => buildElements(starterId))
+    commit(() => ({ elements: buildElements(starterId), poster: DEFAULT_POSTER }))
     setSelectedId(null)
     notify('Reset')
   }
 
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ starterId, elements, savedAt: Date.now() }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ starterId, elements, poster, savedAt: Date.now() }))
       notify('Saved')
     } catch (e) {
       notify('Could not save')
@@ -154,14 +182,14 @@ function App() {
       return
     }
     setStarterId(saved.starterId)
-    commit(() => saved.elements)
+    commit(() => ({ elements: saved.elements, poster: saved.poster }))
     setSelectedId(null)
     notify('Restored')
   }
 
   async function exportImage() {
     try {
-      await exportPng(elements)
+      await exportPng(elements, poster)
       notify('PNG exported')
     } catch (e) {
       notify('Export failed')
@@ -247,6 +275,7 @@ function App() {
       <main className="workspace">
         <Canvas
           elements={elements}
+          poster={poster}
           selectedId={selected ? selected.id : null}
           onSelect={setSelectedId}
           onChange={changeElement}
@@ -254,8 +283,10 @@ function App() {
         />
         <Properties
           element={selected}
+          poster={poster}
           textRef={textRef}
           onChange={(changes, key) => changeElement(selected.id, changes, key)}
+          onPosterChange={changePoster}
         />
       </main>
       {toast && (

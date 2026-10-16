@@ -1,7 +1,14 @@
-export const CANVAS_W = 600
-export const CANVAS_H = 800
-export const LINE_HEIGHT = 1.1
 export const HIGHLIGHT = '#ffe94a'
+export const MARGIN = 40
+
+export const FORMATS = [
+  { name: 'Portrait', width: 600, height: 800 },
+  { name: 'Square', width: 600, height: 600 },
+  { name: 'Story', width: 450, height: 800 },
+  { name: 'Landscape', width: 800, height: 600 },
+]
+
+export const DEFAULT_POSTER = { width: 600, height: 800, background: '#ffffff' }
 
 export const FONTS = [
   { name: 'Playfair Display', fallback: 'serif' },
