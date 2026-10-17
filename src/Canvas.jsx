@@ -97,7 +97,9 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
             transform: `scale(${scale})`,
           }}
         >
-          {elements.map((el) => (
+          {elements
+            .filter((el) => !el.hidden)
+            .map((el) => (
             <div
               key={el.id}
               className={'text-el' + (el.id === selectedId ? ' selected' : '')}
@@ -107,6 +109,8 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
                 fontFamily: fontStack(el.fontFamily),
                 fontSize: el.fontSize,
                 fontWeight: el.fontWeight,
+                fontStyle: el.italic ? 'italic' : 'normal',
+                textTransform: el.uppercase ? 'uppercase' : 'none',
                 color: el.color,
                 textAlign: el.align,
                 letterSpacing: el.letterSpacing + 'em',

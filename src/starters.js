@@ -1,3 +1,5 @@
+import { DEFAULT_POSTER } from './constants.js'
+
 let counter = 0
 
 export function newId() {
@@ -19,6 +21,9 @@ export function makeText(props = {}) {
     rotation: 0,
     letterSpacing: 0,
     lineHeight: 1.1,
+    italic: false,
+    uppercase: false,
+    hidden: false,
     highlight: false,
     ...props,
   }
@@ -74,9 +79,46 @@ export const STARTERS = [
       { text: 'a poster about volume', x: 36, y: 730, fontFamily: 'Space Mono', fontSize: 14, fontWeight: 400 },
     ],
   },
+  {
+    id: 'night-shift',
+    name: 'Night shift',
+    poster: { background: '#000000' },
+    elements: [
+      { text: 'Night\nShift', x: 36, y: 40, fontFamily: 'Anton', fontSize: 220, fontWeight: 400, color: '#ffffff', uppercase: true },
+      { text: 'the city after twelve', x: 44, y: 560, fontFamily: 'Libre Baskerville', fontSize: 22, fontWeight: 400, color: '#ffffff', italic: true },
+      { text: 'open all night', x: 44, y: 640, fontFamily: 'Space Mono', fontSize: 14, fontWeight: 700, uppercase: true, highlight: true },
+      { text: 'after\ndark', x: 340, y: 600, fontSize: 80, fontWeight: 400, color: '#ffe94a', italic: true },
+      { text: 'No. 07', x: 44, y: 750, fontFamily: 'Space Mono', fontSize: 12, fontWeight: 400, color: '#8a8a8a' },
+    ],
+  },
+  {
+    id: 'reading-list',
+    name: 'Reading list',
+    poster: { width: 800, height: 600 },
+    elements: [
+      { text: 'Reading\nlist', x: 44, y: 36, fontSize: 110 },
+      { text: 'Autumn, in no particular order', x: 48, y: 330, fontFamily: 'Space Mono', fontSize: 13, fontWeight: 400 },
+      {
+        text: "1. Giovanni's Room\n2. The Garden of Forking Paths\n3. Bluets\n4. A Field Guide to Getting Lost\n5. Nox",
+        x: 500,
+        y: 70,
+        fontFamily: 'Libre Baskerville',
+        fontSize: 16,
+        fontWeight: 400,
+        lineHeight: 1.9,
+      },
+      { text: 'Read slowly', x: 48, y: 520, fontFamily: 'Archivo', fontSize: 16, fontWeight: 700, highlight: true },
+      { text: 'p. 3', x: 730, y: 540, fontFamily: 'Space Mono', fontSize: 12, fontWeight: 400 },
+    ],
+  },
 ]
 
 export function buildElements(starterId) {
   const starter = STARTERS.find((s) => s.id === starterId) || STARTERS[0]
   return starter.elements.map((el) => makeText(el))
+}
+
+export function buildPoster(starterId) {
+  const starter = STARTERS.find((s) => s.id === starterId) || STARTERS[0]
+  return { ...DEFAULT_POSTER, ...starter.poster }
 }

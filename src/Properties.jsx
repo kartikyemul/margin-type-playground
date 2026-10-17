@@ -31,7 +31,7 @@ const SHORTCUTS = [
 function Properties({ element, poster, onChange, onPosterChange, textRef }) {
   if (!element) {
     return (
-      <aside className="properties">
+      <div>
         <div className="field">
           <label htmlFor="format">Poster format</label>
           <select
@@ -85,12 +85,12 @@ function Properties({ element, poster, onChange, onPosterChange, textRef }) {
           ))}
         </dl>
         <p className="hint small">On a Mac, use Cmd instead of Ctrl.</p>
-      </aside>
+      </div>
     )
   }
 
   return (
-    <aside className="properties">
+    <div>
       <div className="field">
         <label htmlFor="text">Text</label>
         <textarea
@@ -167,6 +167,18 @@ function Properties({ element, poster, onChange, onPosterChange, textRef }) {
       </div>
 
       <div className="field">
+        <span className="label">Style</span>
+        <div className="segmented">
+          <button aria-pressed={element.italic} onClick={() => onChange({ italic: !element.italic })}>
+            Italic
+          </button>
+          <button aria-pressed={element.uppercase} onClick={() => onChange({ uppercase: !element.uppercase })}>
+            Uppercase
+          </button>
+        </div>
+      </div>
+
+      <div className="field">
         <span className="label">Alignment</span>
         <div className="segmented">
           {ALIGNMENTS.map((a) => (
@@ -221,7 +233,7 @@ function Properties({ element, poster, onChange, onPosterChange, textRef }) {
           Highlight
         </label>
       </div>
-    </aside>
+    </div>
   )
 }
 

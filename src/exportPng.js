@@ -3,6 +3,7 @@ import { HIGHLIGHT, fontStack } from './constants.js'
 const SCALE = 3
 
 export async function exportPng(elements, poster) {
+  const visible = elements.filter((el) => !el.hidden)
   const canvas = document.createElement('canvas')
   canvas.width = poster.width * SCALE
   canvas.height = poster.height * SCALE
@@ -13,15 +14,15 @@ export async function exportPng(elements, poster) {
 
   try {
     await Promise.all(
-      elements.map((el) =>
-        document.fonts.load(`${el.fontWeight} ${el.fontSize}px ${fontStack(el.fontFamily)}`, el.text)
+      visible.map((el) =>
+        document.fonts.load(`${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`, el.text)
       )
     )
   } catch (e) {
     // fall back to whatever fonts are available
   }
 
-  elements.forEach((el) => drawText(ctx, el))
+  visible.forEach((el) => drawText(ctx, el))
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
   const url = URL.createObjectURL(blob)
@@ -32,6 +33,10 @@ export async function exportPng(elements, poster) {
   link.click()
   link.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function fontStyle(el) {
+  return `${el.italic ? 'italic ' : ''}${el.fontWeight}`
 }
 
 function lineWidth(ctx, line, spacing) {
@@ -52,11 +57,11 @@ function drawLine(ctx, line, x, y, spacing) {
 }
 
 function drawText(ctx, el) {
-  const lines = el.text.split('\n')
+  const lines = (el.uppercase ? el.text.toUpperCase() : el.text).split('\n')
   const lineHeight = el.fontSize * el.lineHeight
   const spacing = el.fontSize * el.letterSpacing
 
-  ctx.font = `${el.fontWeight} ${el.fontSize}px ${fontStack(el.fontFamily)}`
+  ctx.font = `${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`
   ctx.textBaseline = 'alphabetic'
 
   const widths = lines.map((line) => lineWidth(ctx, line, spacing))
