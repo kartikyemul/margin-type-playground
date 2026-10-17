@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import Toolbar from './Toolbar.jsx'
 import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
-import { STARTERS, buildElements, makeText, newId } from './starters.js'
+import Layers from './Layers.jsx'
+import Library from './Library.jsx'
+import { STARTERS, buildElements, buildPoster, makeText, newId } from './starters.js'
 import { exportPng } from './exportPng.js'
 import { DEFAULT_POSTER } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
+const LIBRARY_KEY = 'margin-library'
 
 function cleanPoster(saved) {
   const poster = { ...DEFAULT_POSTER, ...saved }
@@ -19,25 +22,39 @@ function cleanPoster(saved) {
   return poster
 }
 
+function cleanDoc(data) {
+  if (!data || !Array.isArray(data.elements)) return null
+  return {
+    poster: cleanPoster(data.poster),
+    starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
+    elements: data.elements.filter((el) => el && typeof el.text === 'string').map((el) => makeText(el)),
+  }
+}
+
 function loadSaved() {
   try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY))
-    if (data && Array.isArray(data.elements)) {
-      return {
-        poster: cleanPoster(data.poster),
-        starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
-        elements: data.elements.filter((el) => el && typeof el.text === 'string').map((el) => makeText(el)),
-      }
-    }
+    return cleanDoc(JSON.parse(localStorage.getItem(STORAGE_KEY)))
   } catch (e) {
-    // ignore broken saved data
+    return null
   }
-  return null
+}
+
+function loadLibrary() {
+  try {
+    const list = JSON.parse(localStorage.getItem(LIBRARY_KEY))
+    if (!Array.isArray(list)) return []
+    return list
+      .filter((item) => item && typeof item.id === 'string' && typeof item.name === 'string')
+      .map((item) => ({ ...item, ...cleanDoc(item), savedAt: item.savedAt || Date.now() }))
+      .filter((item) => item.elements)
+  } catch (e) {
+    return []
+  }
 }
 
 function App() {
   const [initial] = useState(
-    () => loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours'), poster: DEFAULT_POSTER }
+    () => loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours'), poster: buildPoster('quiet-hours') }
   )
   const [starterId, setStarterId] = useState(initial.starterId)
   const [history, setHistory] = useState({
@@ -47,6 +64,8 @@ function App() {
   })
   const [selectedId, setSelectedId] = useState(null)
   const [toast, setToast] = useState('')
+  const [tab, setTab] = useState('style')
+  const [library, setLibrary] = useState(loadLibrary)
 
   const textRef = useRef(null)
   const toastTimer = useRef(null)
@@ -93,6 +112,7 @@ function App() {
     const el = makeText({ x: 60 + offset, y: 80 + offset })
     commit((doc) => ({ ...doc, elements: [...doc.elements, el] }))
     setSelectedId(el.id)
+    setTab('style')
     setTimeout(() => {
       textRef.current?.focus()
       textRef.current?.select()
@@ -114,9 +134,9 @@ function App() {
     notify('Deleted')
   }
 
-  function moveLayer(step) {
-    if (!selected) return
-    const from = elements.findIndex((el) => el.id === selected.id)
+  function moveLayer(step, id = selected && selected.id) {
+    if (!id) return
+    const from = elements.findIndex((el) => el.id === id)
     const to = from + step
     if (to < 0 || to >= elements.length) {
       notify(step > 0 ? 'Already in front' : 'Already at the back')
@@ -155,13 +175,13 @@ function App() {
   function loadStarter(id) {
     const starter = STARTERS.find((s) => s.id === id)
     setStarterId(id)
-    commit(() => ({ elements: buildElements(id), poster: DEFAULT_POSTER }))
+    commit(() => ({ elements: buildElements(id), poster: buildPoster(id) }))
     setSelectedId(null)
     notify(starter.name + ' loaded')
   }
 
   function reset() {
-    commit(() => ({ elements: buildElements(starterId), poster: DEFAULT_POSTER }))
+    commit(() => ({ elements: buildElements(starterId), poster: buildPoster(starterId) }))
     setSelectedId(null)
     notify('Reset')
   }
@@ -185,6 +205,43 @@ function App() {
     commit(() => ({ elements: saved.elements, poster: saved.poster }))
     setSelectedId(null)
     notify('Restored')
+  }
+
+  function saveToLibrary(rawName) {
+    const name = rawName.trim() || 'Untitled'
+    const existing = library.find((item) => item.name === name)
+    const entry = { id: existing ? existing.id : newId(), name, savedAt: Date.now(), starterId, elements, poster }
+    const next = existing ? library.map((item) => (item.id === existing.id ? entry : item)) : [entry, ...library]
+    try {
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(next))
+      setLibrary(next)
+      notify(existing ? 'Replaced "' + name + '"' : 'Saved "' + name + '"')
+    } catch (e) {
+      notify('Could not save')
+    }
+  }
+
+  function openFromLibrary(id) {
+    const item = library.find((entry) => entry.id === id)
+    if (!item) return
+    setStarterId(item.starterId)
+    commit(() => ({ elements: item.elements.map((el) => ({ ...el })), poster: item.poster }))
+    setSelectedId(null)
+    notify('Opened "' + item.name + '"')
+  }
+
+  function deleteFromLibrary(id) {
+    const item = library.find((entry) => entry.id === id)
+    if (!item || !window.confirm('Delete "' + item.name + '"? This can\'t be undone.')) return
+    const next = library.filter((entry) => entry.id !== id)
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(next))
+    setLibrary(next)
+    notify('Deleted "' + item.name + '"')
+  }
+
+  function editText() {
+    setTab('style')
+    setTimeout(() => textRef.current?.focus(), 0)
   }
 
   async function exportImage() {
@@ -279,15 +336,49 @@ function App() {
           selectedId={selected ? selected.id : null}
           onSelect={setSelectedId}
           onChange={changeElement}
-          onEdit={() => textRef.current?.focus()}
+          onEdit={editText}
         />
-        <Properties
-          element={selected}
-          poster={poster}
-          textRef={textRef}
-          onChange={(changes, key) => changeElement(selected.id, changes, key)}
-          onPosterChange={changePoster}
-        />
+        <aside className="sidebar">
+          <div className="tabs" role="tablist">
+            {[
+              ['style', 'Style'],
+              ['layers', 'Layers'],
+              ['posters', 'Posters'],
+            ].map(([id, label]) => (
+              <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="sidebar-body">
+            {tab === 'style' && (
+              <Properties
+                element={selected}
+                poster={poster}
+                textRef={textRef}
+                onChange={(changes, key) => changeElement(selected.id, changes, key)}
+                onPosterChange={changePoster}
+              />
+            )}
+            {tab === 'layers' && (
+              <Layers
+                elements={elements}
+                selectedId={selected ? selected.id : null}
+                onSelect={setSelectedId}
+                onToggle={(id) => changeElement(id, { hidden: !elements.find((el) => el.id === id).hidden })}
+                onMove={(id, step) => moveLayer(step, id)}
+              />
+            )}
+            {tab === 'posters' && (
+              <Library
+                library={library}
+                onSave={saveToLibrary}
+                onOpen={openFromLibrary}
+                onDelete={deleteFromLibrary}
+              />
+            )}
+          </div>
+        </aside>
       </main>
       {toast && (
         <div className="toast" role="status">

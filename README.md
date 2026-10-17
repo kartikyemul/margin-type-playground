@@ -22,6 +22,7 @@ npm run preview
 
 ## Notes
 
+- The side panel has three tabs: Style, Layers (select, reorder, hide) and Posters (named saves kept in your browser).
 - Posters can be portrait, square, story or landscape, with a background color you pick when nothing is selected.
 - While dragging, text snaps to the centre and to a 40px margin. Hold Alt to move freely.
 - Save and Restore use your browser's localStorage. Your last saved poster also loads when you reopen the app.
@@ -33,7 +34,8 @@ npm run preview
 - `src/App.jsx` holds the state, undo/redo, saving and keyboard shortcuts
 - `src/Toolbar.jsx` is the top bar
 - `src/Canvas.jsx` draws the poster and handles dragging
-- `src/Properties.jsx` is the side panel for the selected text
+- `src/Properties.jsx` is the Style tab for the selected text and the poster
+- `src/Layers.jsx` and `src/Library.jsx` are the other two tabs
 - `src/starters.js` has the starter posters
 - `src/exportPng.js` draws the poster to a canvas and downloads it
 - `src/constants.js` has shared sizes and fonts
