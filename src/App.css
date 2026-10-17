@@ -169,24 +169,33 @@ textarea {
   height: 1px;
 }
 
-.text-el {
+.item {
   position: absolute;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+  transform-origin: center;
+}
+
+.text-el {
   width: max-content;
   min-width: 1em;
   white-space: pre;
   line-height: var(--lh);
-  transform-origin: center;
-  cursor: move;
-  user-select: none;
-  touch-action: none;
 }
 
-.text-el:hover {
+.shape-el::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.item:hover {
   outline: 1px dashed #999;
   outline-offset: 6px;
 }
 
-.text-el.selected {
+.item.selected {
   outline: 1px solid #000;
   outline-offset: 6px;
 }
@@ -372,6 +381,10 @@ input[type='checkbox'] {
   display: flex;
 }
 
+.segmented + .segmented {
+  margin-top: 6px;
+}
+
 .segmented button {
   flex: 1;
   padding: 7px 4px;
@@ -426,6 +439,10 @@ input[type='color'] {
   margin: 0 0 20px;
   line-height: 1.5;
   color: var(--muted);
+}
+
+.hint.small.top {
+  margin: 6px 0 12px;
 }
 
 .hint.small {

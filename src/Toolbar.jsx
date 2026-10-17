@@ -7,6 +7,7 @@ function Toolbar({
   starterId,
   onStarter,
   onAdd,
+  onAddShape,
   onDuplicate,
   onDelete,
   onForward,
@@ -24,6 +25,12 @@ function Toolbar({
 
       <button className="btn" onClick={onAdd} title="Add text (T)">
         Add text
+      </button>
+      <button className="btn" onClick={() => onAddShape('rule')} title="Add a thin line">
+        Add rule
+      </button>
+      <button className="btn" onClick={() => onAddShape('block')} title="Add a solid block of color">
+        Add block
       </button>
       <button className="btn" onClick={onDuplicate} disabled={!hasSelection} title="Duplicate (Ctrl D)">
         Duplicate

@@ -18,7 +18,7 @@ function snapAxis(pos, size, total, threshold) {
   return best ? { pos: pos + best.diff, guide: best.goal } : { pos, guide: null }
 }
 
-function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
+function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
   const stageRef = useRef(null)
   const drag = useRef(null)
   const dragCount = useRef(0)
@@ -37,17 +37,34 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
 
   function startDrag(e, el) {
     e.stopPropagation()
-    onSelect(el.id)
+    const wasSelected = selectedIds.includes(el.id)
+
+    // Shift-click adds or removes an item and doesn't start a drag
+    if (e.shiftKey) {
+      onSelect(el.id, true)
+      return
+    }
+
+    // Grabbing something already selected keeps the whole group together
+    let ids = [el.id]
+    if (wasSelected) ids = selectedIds
+    else onSelect(el.id)
+
     e.currentTarget.setPointerCapture(e.pointerId)
     dragCount.current += 1
+    const starts = {}
+    elements.forEach((item) => {
+      if (ids.includes(item.id)) starts[item.id] = { x: item.x, y: item.y }
+    })
     drag.current = {
       id: el.id,
+      ids,
+      starts,
       startX: e.clientX,
       startY: e.clientY,
-      x: el.x,
-      y: el.y,
       session: dragCount.current,
       moved: false,
+      collapse: wasSelected && ids.length > 1,
     }
   }
 
@@ -59,8 +76,9 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
     if (!d.moved && Math.hypot(dx, dy) < 3) return
     d.moved = true
 
-    let x = d.x + dx / scale
-    let y = d.y + dy / scale
+    const origin = d.starts[d.id]
+    let x = origin.x + dx / scale
+    let y = origin.y + dy / scale
     let guideX = null
     let guideY = null
 
@@ -75,14 +93,36 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
     }
     setGuides({ x: guideX, y: guideY })
 
-    x = Math.max(-300, Math.min(poster.width - 30, x))
-    y = Math.max(-200, Math.min(poster.height - 30, y))
-    onChange(d.id, { x: Math.round(x), y: Math.round(y) }, 'drag-' + d.session)
+    // everything in the group moves by the same amount as the one being dragged
+    const moveX = x - origin.x
+    const moveY = y - origin.y
+    const moves = {}
+    d.ids.forEach((id) => {
+      const start = d.starts[id]
+      moves[id] = {
+        x: Math.round(Math.max(-300, Math.min(poster.width - 30, start.x + moveX))),
+        y: Math.round(Math.max(-200, Math.min(poster.height - 30, start.y + moveY))),
+      }
+    })
+    onMove(moves, 'drag-' + d.session)
   }
 
   function endDrag() {
+    const d = drag.current
+    // a plain click on part of a group picks just that item
+    if (d && !d.moved && d.collapse) onSelect(d.id)
     drag.current = null
     setGuides({ x: null, y: null })
+  }
+
+  function itemProps(el) {
+    return {
+      'data-id': el.id,
+      onPointerDown: (e) => startDrag(e, el),
+      onPointerMove: moveDrag,
+      onPointerUp: endDrag,
+      onPointerCancel: endDrag,
+    }
   }
 
   return (
@@ -99,39 +139,58 @@ function Canvas({ elements, poster, selectedId, onSelect, onChange, onEdit }) {
         >
           {elements
             .filter((el) => !el.hidden)
-            .map((el) => (
-            <div
-              key={el.id}
-              className={'text-el' + (el.id === selectedId ? ' selected' : '')}
-              style={{
-                left: el.x,
-                top: el.y,
-                fontFamily: fontStack(el.fontFamily),
-                fontSize: el.fontSize,
-                fontWeight: el.fontWeight,
-                fontStyle: el.italic ? 'italic' : 'normal',
-                textTransform: el.uppercase ? 'uppercase' : 'none',
-                color: el.color,
-                textAlign: el.align,
-                letterSpacing: el.letterSpacing + 'em',
-                '--lh': el.lineHeight,
-                transform: `rotate(${el.rotation}deg)`,
-              }}
-              onPointerDown={(e) => startDrag(e, el)}
-              onPointerMove={moveDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-              onDoubleClick={onEdit}
-            >
-              {el.text.split('\n').map((line, i) => (
-                <div className="line" key={i}>
-                  <span className="line-text" style={el.highlight ? { background: HIGHLIGHT } : undefined}>
-                    {line || '\u200b'}
-                  </span>
+            .map((el) => {
+              const selected = selectedIds.includes(el.id)
+
+              if (el.type === 'shape') {
+                return (
+                  <div
+                    key={el.id}
+                    className={'item shape-el' + (selected ? ' selected' : '')}
+                    style={{
+                      left: el.x,
+                      top: el.y,
+                      width: el.width,
+                      height: el.height,
+                      background: el.color,
+                      transform: `rotate(${el.rotation}deg)`,
+                    }}
+                    {...itemProps(el)}
+                  />
+                )
+              }
+
+              return (
+                <div
+                  key={el.id}
+                  className={'item text-el' + (selected ? ' selected' : '')}
+                  style={{
+                    left: el.x,
+                    top: el.y,
+                    fontFamily: fontStack(el.fontFamily),
+                    fontSize: el.fontSize,
+                    fontWeight: el.fontWeight,
+                    fontStyle: el.italic ? 'italic' : 'normal',
+                    textTransform: el.uppercase ? 'uppercase' : 'none',
+                    color: el.color,
+                    textAlign: el.align,
+                    letterSpacing: el.letterSpacing + 'em',
+                    '--lh': el.lineHeight,
+                    transform: `rotate(${el.rotation}deg)`,
+                  }}
+                  {...itemProps(el)}
+                  onDoubleClick={onEdit}
+                >
+                  {el.text.split('\n').map((line, i) => (
+                    <div className="line" key={i}>
+                      <span className="line-text" style={el.highlight ? { background: HIGHLIGHT } : undefined}>
+                        {line || '\u200b'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ))}
+              )
+            })}
           {guides.x !== null && <div className="guide guide-v" style={{ left: guides.x }} />}
           {guides.y !== null && <div className="guide guide-h" style={{ top: guides.y }} />}
         </div>

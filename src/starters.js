@@ -29,6 +29,26 @@ export function makeText(props = {}) {
   }
 }
 
+export function makeShape(props = {}) {
+  return {
+    id: newId(),
+    type: 'shape',
+    kind: 'block',
+    x: 60,
+    y: 120,
+    width: 160,
+    height: 160,
+    color: '#000000',
+    rotation: 0,
+    hidden: false,
+    ...props,
+  }
+}
+
+export function makeItem(props = {}) {
+  return props.type === 'shape' ? makeShape(props) : makeText(props)
+}
+
 export const STARTERS = [
   { id: 'blank', name: 'Blank canvas', elements: [] },
   {
@@ -48,6 +68,7 @@ export const STARTERS = [
       { text: 'Autumn 2026', x: 520, y: 380, fontFamily: 'Space Mono', fontSize: 14, fontWeight: 400, rotation: -90 },
       { text: 'slow', x: 44, y: 560, fontSize: 220, fontWeight: 400 },
       { text: 'Printed in a small run', x: 330, y: 29, fontFamily: 'Space Mono', fontSize: 11, fontWeight: 400 },
+      { type: 'shape', kind: 'rule', x: 52, y: 404, width: 56, height: 3 },
     ],
   },
   {
@@ -109,13 +130,14 @@ export const STARTERS = [
       },
       { text: 'Read slowly', x: 48, y: 520, fontFamily: 'Archivo', fontSize: 16, fontWeight: 700, highlight: true },
       { text: 'p. 3', x: 730, y: 540, fontFamily: 'Space Mono', fontSize: 12, fontWeight: 400 },
+      { type: 'shape', kind: 'rule', x: 500, y: 52, width: 250, height: 2 },
     ],
   },
 ]
 
 export function buildElements(starterId) {
   const starter = STARTERS.find((s) => s.id === starterId) || STARTERS[0]
-  return starter.elements.map((el) => makeText(el))
+  return starter.elements.map((el) => makeItem(el))
 }
 
 export function buildPoster(starterId) {

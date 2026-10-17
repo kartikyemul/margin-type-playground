@@ -1,28 +1,30 @@
 import { HIGHLIGHT, fontStack } from './constants.js'
 
-const SCALE = 3
-
 export async function exportPng(elements, poster) {
+  const scale = poster.exportScale || 3
   const visible = elements.filter((el) => !el.hidden)
+
   const canvas = document.createElement('canvas')
-  canvas.width = poster.width * SCALE
-  canvas.height = poster.height * SCALE
+  canvas.width = poster.width * scale
+  canvas.height = poster.height * scale
   const ctx = canvas.getContext('2d')
-  ctx.scale(SCALE, SCALE)
-  ctx.fillStyle = poster.background
-  ctx.fillRect(0, 0, poster.width, poster.height)
+  ctx.scale(scale, scale)
+  if (!poster.transparent) {
+    ctx.fillStyle = poster.background
+    ctx.fillRect(0, 0, poster.width, poster.height)
+  }
 
   try {
     await Promise.all(
-      visible.map((el) =>
-        document.fonts.load(`${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`, el.text)
-      )
+      visible
+        .filter((el) => el.type !== 'shape')
+        .map((el) => document.fonts.load(`${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`, el.text))
     )
   } catch (e) {
     // fall back to whatever fonts are available
   }
 
-  visible.forEach((el) => drawText(ctx, el))
+  visible.forEach((el) => (el.type === 'shape' ? drawShape(ctx, el) : drawText(ctx, el)))
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
   const url = URL.createObjectURL(blob)
@@ -37,6 +39,15 @@ export async function exportPng(elements, poster) {
 
 function fontStyle(el) {
   return `${el.italic ? 'italic ' : ''}${el.fontWeight}`
+}
+
+function drawShape(ctx, el) {
+  ctx.save()
+  ctx.translate(el.x + el.width / 2, el.y + el.height / 2)
+  ctx.rotate((el.rotation * Math.PI) / 180)
+  ctx.fillStyle = el.color
+  ctx.fillRect(-el.width / 2, -el.height / 2, el.width, el.height)
+  ctx.restore()
 }
 
 function lineWidth(ctx, line, spacing) {

@@ -22,6 +22,8 @@ npm run preview
 
 ## Notes
 
+- Add text, thin rules and solid blocks. Shift-click (or Ctrl/Cmd A) selects several items, and they move, style, duplicate and delete together. The Align buttons snap items to the poster edges or centre.
+- With nothing selected, the Style tab lets you set the export size (1×, 2× or 3×) and a transparent PNG background.
 - The side panel has three tabs: Style, Layers (select, reorder, hide) and Posters (named saves kept in your browser).
 - Posters can be portrait, square, story or landscape, with a background color you pick when nothing is selected.
 - While dragging, text snaps to the centre and to a 40px margin. Hold Alt to move freely.

@@ -4,9 +4,9 @@ import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
 import Layers from './Layers.jsx'
 import Library from './Library.jsx'
-import { STARTERS, buildElements, buildPoster, makeText, newId } from './starters.js'
+import { STARTERS, buildElements, buildPoster, makeItem, makeShape, makeText, newId } from './starters.js'
 import { exportPng } from './exportPng.js'
-import { DEFAULT_POSTER } from './constants.js'
+import { DEFAULT_POSTER, MARGIN } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
 const LIBRARY_KEY = 'margin-library'
@@ -19,6 +19,8 @@ function cleanPoster(saved) {
     poster.height = DEFAULT_POSTER.height
   }
   if (typeof poster.background !== 'string') poster.background = DEFAULT_POSTER.background
+  if (![1, 2, 3].includes(poster.exportScale)) poster.exportScale = DEFAULT_POSTER.exportScale
+  poster.transparent = poster.transparent === true
   return poster
 }
 
@@ -27,7 +29,9 @@ function cleanDoc(data) {
   return {
     poster: cleanPoster(data.poster),
     starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
-    elements: data.elements.filter((el) => el && typeof el.text === 'string').map((el) => makeText(el)),
+    elements: data.elements
+      .filter((el) => el && (el.type === 'shape' || typeof el.text === 'string'))
+      .map((el) => makeItem(el)),
   }
 }
 
@@ -62,7 +66,7 @@ function App() {
     doc: { elements: initial.elements, poster: initial.poster },
     future: [],
   })
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedIds, setSelectedIds] = useState([])
   const [toast, setToast] = useState('')
   const [tab, setTab] = useState('style')
   const [library, setLibrary] = useState(loadLibrary)
@@ -73,7 +77,8 @@ function App() {
 
   const elements = history.doc.elements
   const poster = history.doc.poster
-  const selected = elements.find((el) => el.id === selectedId)
+  const selection = elements.filter((el) => selectedIds.includes(el.id))
+  const hasSelection = selection.length > 0
 
   function notify(message) {
     setToast(message)
@@ -82,7 +87,7 @@ function App() {
   }
 
   // Every change goes through here so undo and redo work.
-  // The "doc" is the whole poster: its text elements plus the poster settings.
+  // The "doc" is the whole poster: its elements plus the poster settings.
   // Changes with the same key in quick succession (dragging, typing, sliders)
   // are merged into a single undo step.
   function commit(change, key = null) {
@@ -96,10 +101,25 @@ function App() {
     }))
   }
 
-  function changeElement(id, changes, key = null) {
+  // Click selects one item, shift-click adds or removes it, null clears everything
+  function select(id, additive = false) {
+    if (id === null) setSelectedIds([])
+    else if (additive) setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+    else setSelectedIds([id])
+  }
+
+  function changeElements(ids, changes, key = null) {
     commit(
-      (doc) => ({ ...doc, elements: doc.elements.map((el) => (el.id === id ? { ...el, ...changes } : el)) }),
-      key && key + '-' + id
+      (doc) => ({ ...doc, elements: doc.elements.map((el) => (ids.includes(el.id) ? { ...el, ...changes } : el)) }),
+      key && key + '-' + ids.join('+')
+    )
+  }
+
+  // moves looks like { someId: { x: 10, y: 20 }, otherId: { x: 40, y: 60 } }
+  function moveElements(moves, key = null) {
+    commit(
+      (doc) => ({ ...doc, elements: doc.elements.map((el) => (moves[el.id] ? { ...el, ...moves[el.id] } : el)) }),
+      key
     )
   }
 
@@ -107,36 +127,50 @@ function App() {
     commit((doc) => ({ ...doc, poster: { ...doc.poster, ...changes } }), key && 'poster-' + key)
   }
 
+  function addItem(el) {
+    commit((doc) => ({ ...doc, elements: [...doc.elements, el] }))
+    setSelectedIds([el.id])
+    setTab('style')
+  }
+
   function addText() {
     const offset = (elements.length % 6) * 24
-    const el = makeText({ x: 60 + offset, y: 80 + offset })
-    commit((doc) => ({ ...doc, elements: [...doc.elements, el] }))
-    setSelectedId(el.id)
-    setTab('style')
+    addItem(makeText({ x: 60 + offset, y: 80 + offset }))
     setTimeout(() => {
       textRef.current?.focus()
       textRef.current?.select()
     }, 0)
   }
 
+  function addShape(kind) {
+    const offset = (elements.length % 6) * 24
+    const size = kind === 'rule' ? { width: 240, height: 3 } : { width: 160, height: 160, color: '#ffe94a' }
+    addItem(makeShape({ kind, x: 60 + offset, y: 120 + offset, ...size }))
+  }
+
   function duplicate() {
-    if (!selected) return
-    const copy = { ...selected, id: newId(), x: selected.x + 20, y: selected.y + 20 }
-    commit((doc) => ({ ...doc, elements: [...doc.elements, copy] }))
-    setSelectedId(copy.id)
-    notify('Duplicated')
+    if (!hasSelection) return
+    const copies = selection.map((el) => ({ ...el, id: newId(), x: el.x + 20, y: el.y + 20 }))
+    commit((doc) => ({ ...doc, elements: [...doc.elements, ...copies] }))
+    setSelectedIds(copies.map((el) => el.id))
+    notify(copies.length > 1 ? 'Duplicated ' + copies.length + ' items' : 'Duplicated')
   }
 
   function remove() {
-    if (!selected) return
-    commit((doc) => ({ ...doc, elements: doc.elements.filter((el) => el.id !== selected.id) }))
-    setSelectedId(null)
-    notify('Deleted')
+    if (!hasSelection) return
+    const ids = selection.map((el) => el.id)
+    commit((doc) => ({ ...doc, elements: doc.elements.filter((el) => !ids.includes(el.id)) }))
+    setSelectedIds([])
+    notify(ids.length > 1 ? 'Deleted ' + ids.length + ' items' : 'Deleted')
   }
 
-  function moveLayer(step, id = selected && selected.id) {
-    if (!id) return
-    const from = elements.findIndex((el) => el.id === id)
+  function moveLayer(step, id) {
+    const target = id || (selection.length === 1 ? selection[0].id : null)
+    if (!target) {
+      notify('Select one item to change its layer')
+      return
+    }
+    const from = elements.findIndex((el) => el.id === target)
     const to = from + step
     if (to < 0 || to >= elements.length) {
       notify(step > 0 ? 'Already in front' : 'Already at the back')
@@ -148,6 +182,28 @@ function App() {
       return { ...doc, elements: next }
     })
     notify(step > 0 ? 'Brought forward' : 'Sent backward')
+  }
+
+  // Lines items up against the poster edges (with a margin) or its centre
+  function align(where) {
+    const moves = {}
+    selection.forEach((el) => {
+      const node = document.querySelector(`[data-id="${el.id}"]`)
+      if (!node) return
+      const w = node.offsetWidth
+      const h = node.offsetHeight
+      let x = el.x
+      let y = el.y
+      if (where === 'left') x = MARGIN
+      if (where === 'center') x = (poster.width - w) / 2
+      if (where === 'right') x = poster.width - MARGIN - w
+      if (where === 'top') y = MARGIN
+      if (where === 'middle') y = (poster.height - h) / 2
+      if (where === 'bottom') y = poster.height - MARGIN - h
+      moves[el.id] = { x: Math.round(x), y: Math.round(y) }
+    })
+    moveElements(moves)
+    notify('Aligned')
   }
 
   function undo() {
@@ -176,13 +232,13 @@ function App() {
     const starter = STARTERS.find((s) => s.id === id)
     setStarterId(id)
     commit(() => ({ elements: buildElements(id), poster: buildPoster(id) }))
-    setSelectedId(null)
+    setSelectedIds([])
     notify(starter.name + ' loaded')
   }
 
   function reset() {
     commit(() => ({ elements: buildElements(starterId), poster: buildPoster(starterId) }))
-    setSelectedId(null)
+    setSelectedIds([])
     notify('Reset')
   }
 
@@ -203,7 +259,7 @@ function App() {
     }
     setStarterId(saved.starterId)
     commit(() => ({ elements: saved.elements, poster: saved.poster }))
-    setSelectedId(null)
+    setSelectedIds([])
     notify('Restored')
   }
 
@@ -226,7 +282,7 @@ function App() {
     if (!item) return
     setStarterId(item.starterId)
     commit(() => ({ elements: item.elements.map((el) => ({ ...el })), poster: item.poster }))
-    setSelectedId(null)
+    setSelectedIds([])
     notify('Opened "' + item.name + '"')
   }
 
@@ -280,14 +336,17 @@ function App() {
       } else if (mod && key === 'd') {
         e.preventDefault()
         duplicate()
+      } else if (mod && key === 'a') {
+        e.preventDefault()
+        setSelectedIds(elements.map((el) => el.id))
       } else if (mod) {
         return
       } else if (key === 't') {
         e.preventDefault()
         addText()
       } else if (key === 'escape') {
-        setSelectedId(null)
-      } else if (!selected) {
+        setSelectedIds([])
+      } else if (!hasSelection) {
         return
       } else if (key === 'delete' || key === 'backspace') {
         e.preventDefault()
@@ -301,7 +360,11 @@ function App() {
         const step = e.shiftKey ? 10 : 1
         const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
         const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
-        changeElement(selected.id, { x: selected.x + dx, y: selected.y + dy }, 'nudge')
+        const moves = {}
+        selection.forEach((el) => {
+          moves[el.id] = { x: el.x + dx, y: el.y + dy }
+        })
+        moveElements(moves, 'nudge')
       }
     }
 
@@ -312,12 +375,13 @@ function App() {
   return (
     <div className="app">
       <Toolbar
-        hasSelection={!!selected}
+        hasSelection={hasSelection}
         canUndo={history.past.length > 0}
         canRedo={history.future.length > 0}
         starterId={starterId}
         onStarter={loadStarter}
         onAdd={addText}
+        onAddShape={addShape}
         onDuplicate={duplicate}
         onDelete={remove}
         onForward={() => moveLayer(1)}
@@ -333,9 +397,9 @@ function App() {
         <Canvas
           elements={elements}
           poster={poster}
-          selectedId={selected ? selected.id : null}
-          onSelect={setSelectedId}
-          onChange={changeElement}
+          selectedIds={selectedIds}
+          onSelect={select}
+          onMove={moveElements}
           onEdit={editText}
         />
         <aside className="sidebar">
@@ -353,19 +417,26 @@ function App() {
           <div className="sidebar-body">
             {tab === 'style' && (
               <Properties
-                element={selected}
+                selection={selection}
                 poster={poster}
                 textRef={textRef}
-                onChange={(changes, key) => changeElement(selected.id, changes, key)}
+                onChange={(changes, key) =>
+                  changeElements(
+                    selection.map((el) => el.id),
+                    changes,
+                    key
+                  )
+                }
                 onPosterChange={changePoster}
+                onAlign={align}
               />
             )}
             {tab === 'layers' && (
               <Layers
                 elements={elements}
-                selectedId={selected ? selected.id : null}
-                onSelect={setSelectedId}
-                onToggle={(id) => changeElement(id, { hidden: !elements.find((el) => el.id === id).hidden })}
+                selectedIds={selectedIds}
+                onSelect={select}
+                onToggle={(id) => changeElements([id], { hidden: !elements.find((el) => el.id === id).hidden })}
                 onMove={(id, step) => moveLayer(step, id)}
               />
             )}
