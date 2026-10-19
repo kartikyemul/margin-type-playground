@@ -15,6 +15,7 @@ const ALIGNMENTS = [
 const COLORS = ['#000000', '#8a8a8a', '#d62828', '#1f3fd1', '#ffe94a']
 const BACKGROUNDS = ['#ffffff', '#e9e9e9', '#ffe94a', '#000000']
 const EXPORT_SCALES = [1, 2, 3]
+const GRID_SIZES = [10, 20, 40]
 
 const SHORTCUTS = [
   ['T', 'Add text'],
@@ -29,6 +30,7 @@ const SHORTCUTS = [
   ['Ctrl S', 'Save'],
   ['Esc', 'Deselect'],
   ['Alt drag', 'Move without snapping'],
+  ['Shift rotate', 'Turn in 15° steps'],
 ]
 
 function PosterSettings({ poster, onPosterChange }) {
@@ -73,6 +75,25 @@ function PosterSettings({ poster, onPosterChange }) {
             value={poster.background}
             onChange={(e) => onPosterChange({ background: e.target.value }, 'background')}
           />
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="label">Grid</span>
+        <label className="check">
+          <input type="checkbox" checked={poster.showGrid} onChange={(e) => onPosterChange({ showGrid: e.target.checked })} />
+          Show grid
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={poster.snapGrid} onChange={(e) => onPosterChange({ snapGrid: e.target.checked })} />
+          Snap to grid
+        </label>
+        <div className="segmented">
+          {GRID_SIZES.map((n) => (
+            <button key={n} aria-pressed={poster.gridSize === n} onClick={() => onPosterChange({ gridSize: n })}>
+              {n} px
+            </button>
+          ))}
         </div>
       </div>
 

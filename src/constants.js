@@ -8,7 +8,16 @@ export const FORMATS = [
   { name: 'Landscape', width: 800, height: 600 },
 ]
 
-export const DEFAULT_POSTER = { width: 600, height: 800, background: '#ffffff', exportScale: 3, transparent: false }
+export const DEFAULT_POSTER = {
+  width: 600,
+  height: 800,
+  background: '#ffffff',
+  exportScale: 3,
+  transparent: false,
+  showGrid: false,
+  snapGrid: false,
+  gridSize: 20,
+}
 
 export const FONTS = [
   { name: 'Playfair Display', fallback: 'serif' },

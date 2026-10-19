@@ -8,6 +8,8 @@ function Toolbar({
   onStarter,
   onAdd,
   onAddShape,
+  gridOn,
+  onGrid,
   onDuplicate,
   onDelete,
   onForward,
@@ -45,7 +47,7 @@ function Toolbar({
         Forward
       </button>
       <button className="btn" onClick={onBackward} disabled={!hasSelection} title="Send backward ([)">
-        Backward
+        Back
       </button>
 
       <span className="divider" />
@@ -62,9 +64,13 @@ function Toolbar({
 
       <span className="divider" />
 
+      <button className="btn" onClick={onGrid} aria-pressed={gridOn} title="Show a grid and snap to it">
+        Grid
+      </button>
+
       <label className="starter">
-        Starter
-        <select className="btn" value={starterId} onChange={(e) => onStarter(e.target.value)}>
+        <span className="visually-hidden">Starter</span>
+        <select className="btn" aria-label="Starter composition" value={starterId} onChange={(e) => onStarter(e.target.value)}>
           {STARTERS.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
