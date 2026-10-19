@@ -1,10 +1,10 @@
 # Margin
 
-A small typography playground. Add text to a poster, move it around, style it, and export the result as a PNG.
+A small typography playground. Add text, rules and blocks to a poster, move and style them, and export the result as a PNG.
 
 ## Run it
 
-You need Node 18 or newer.
+You need Node 20 or newer.
 
 ```
 npm install
@@ -20,24 +20,33 @@ npm run build
 npm run preview
 ```
 
+## What it does
+
+- Add text, thin rules and solid blocks. Drag them around, or use the handles on a selected item to resize it and turn it (hold Shift for 15° steps).
+- Shift-click or Ctrl/Cmd A selects several items, and they move, style, duplicate and delete together.
+- Text snaps to the centre and a 40px margin while dragging. Turn on the Grid button to show a grid and snap to it as well. Hold Alt to move freely.
+- Style tab: font, size, spacing, weight, italic, uppercase, color, rotation, highlight, alignment, and poster format and background.
+- Layers tab: select, reorder and hide items.
+- Posters tab: keep named posters in your browser, or download a poster as a JSON file and import one someone sent you.
+- Export a PNG at 1x, 2x or 3x, with an optional transparent background.
+- Undo and redo, plus Save and Restore for one quick slot. Shortcuts are listed in the Style tab when nothing is selected.
+
 ## Notes
 
-- Add text, thin rules and solid blocks. Shift-click (or Ctrl/Cmd A) selects several items, and they move, style, duplicate and delete together. The Align buttons snap items to the poster edges or centre.
-- With nothing selected, the Style tab lets you set the export size (1×, 2× or 3×) and a transparent PNG background.
-- The side panel has three tabs: Style, Layers (select, reorder, hide) and Posters (named saves kept in your browser).
-- Posters can be portrait, square, story or landscape, with a background color you pick when nothing is selected.
-- While dragging, text snaps to the centre and to a 40px margin. Hold Alt to move freely.
-- Save and Restore use your browser's localStorage. Your last saved poster also loads when you reopen the app.
+- Everything is saved in your browser's localStorage. Nothing is sent anywhere.
 - Fonts come from Google Fonts, so you need to be online the first time for them to show up.
-- Shortcuts are listed in the side panel when nothing is selected.
 
 ## Files
 
-- `src/App.jsx` holds the state, undo/redo, saving and keyboard shortcuts
+- `src/App.jsx` holds the state, undo/redo, saving, import and export, and keyboard shortcuts
 - `src/Toolbar.jsx` is the top bar
-- `src/Canvas.jsx` draws the poster and handles dragging
-- `src/Properties.jsx` is the Style tab for the selected text and the poster
+- `src/Canvas.jsx` draws the poster, the grid, and handles dragging, resizing and rotating
+- `src/Properties.jsx` is the Style tab
 - `src/Layers.jsx` and `src/Library.jsx` are the other two tabs
-- `src/starters.js` has the starter posters
+- `src/starters.js` has the starter posters and cleans up items from saved or imported files
 - `src/exportPng.js` draws the poster to a canvas and downloads it
 - `src/constants.js` has shared sizes and fonts
+
+## License
+
+MIT. See the LICENSE file.

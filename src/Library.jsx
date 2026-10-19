@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
-function Library({ library, onSave, onOpen, onDelete }) {
+function Library({ library, onSave, onOpen, onDelete, onExportJson, onImportJson }) {
   const [name, setName] = useState('')
+  const fileRef = useRef(null)
 
   function submit() {
     onSave(name)
@@ -26,6 +27,30 @@ function Library({ library, onSave, onOpen, onDelete }) {
           </button>
         </div>
         <p className="hint small">Using an existing name replaces that poster.</p>
+      </div>
+
+      <div className="field">
+        <span className="label">Share or back up</span>
+        <div className="inline">
+          <button className="btn" onClick={onExportJson}>
+            Download JSON
+          </button>
+          <button className="btn" onClick={() => fileRef.current.click()}>
+            Import JSON
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files[0]
+            if (file) onImportJson(file)
+            e.target.value = ''
+          }}
+        />
+        <p className="hint small top">A JSON file holds the whole poster, so you can send it to someone else.</p>
       </div>
 
       {library.length === 0 ? (

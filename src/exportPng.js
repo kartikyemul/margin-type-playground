@@ -1,4 +1,5 @@
 import { HIGHLIGHT, fontStack } from './constants.js'
+import { downloadBlob } from './download.js'
 
 export async function exportPng(elements, poster) {
   const scale = poster.exportScale || 3
@@ -27,14 +28,7 @@ export async function exportPng(elements, poster) {
   visible.forEach((el) => (el.type === 'shape' ? drawShape(ctx, el) : drawText(ctx, el)))
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'margin-poster.png'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  downloadBlob(blob, 'margin-poster.png')
 }
 
 function fontStyle(el) {

@@ -4,12 +4,24 @@ import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
 import Layers from './Layers.jsx'
 import Library from './Library.jsx'
-import { STARTERS, buildElements, buildPoster, makeItem, makeShape, makeText, newId } from './starters.js'
+import { STARTERS, buildElements, buildPoster, cleanColor, makeItem, makeShape, makeText, newId } from './starters.js'
+import { downloadBlob } from './download.js'
 import { exportPng } from './exportPng.js'
 import { DEFAULT_POSTER, MARGIN } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
 const LIBRARY_KEY = 'margin-library'
+
+// settings that belong to you rather than to a particular poster
+const PREF_KEYS = ['showGrid', 'snapGrid', 'gridSize', 'exportScale', 'transparent']
+
+function keepPrefs(newPoster, oldPoster) {
+  const prefs = {}
+  PREF_KEYS.forEach((key) => {
+    prefs[key] = oldPoster[key]
+  })
+  return { ...newPoster, ...prefs }
+}
 
 function cleanPoster(saved) {
   const poster = { ...DEFAULT_POSTER, ...saved }
@@ -18,7 +30,10 @@ function cleanPoster(saved) {
     poster.width = DEFAULT_POSTER.width
     poster.height = DEFAULT_POSTER.height
   }
-  if (typeof poster.background !== 'string') poster.background = DEFAULT_POSTER.background
+  poster.background = cleanColor(poster.background, DEFAULT_POSTER.background)
+  poster.showGrid = poster.showGrid === true
+  poster.snapGrid = poster.snapGrid === true
+  if (![10, 20, 40].includes(poster.gridSize)) poster.gridSize = DEFAULT_POSTER.gridSize
   if (![1, 2, 3].includes(poster.exportScale)) poster.exportScale = DEFAULT_POSTER.exportScale
   poster.transparent = poster.transparent === true
   return poster
@@ -231,13 +246,13 @@ function App() {
   function loadStarter(id) {
     const starter = STARTERS.find((s) => s.id === id)
     setStarterId(id)
-    commit(() => ({ elements: buildElements(id), poster: buildPoster(id) }))
+    commit((doc) => ({ elements: buildElements(id), poster: keepPrefs(buildPoster(id), doc.poster) }))
     setSelectedIds([])
     notify(starter.name + ' loaded')
   }
 
   function reset() {
-    commit(() => ({ elements: buildElements(starterId), poster: buildPoster(starterId) }))
+    commit((doc) => ({ elements: buildElements(starterId), poster: keepPrefs(buildPoster(starterId), doc.poster) }))
     setSelectedIds([])
     notify('Reset')
   }
@@ -258,7 +273,7 @@ function App() {
       return
     }
     setStarterId(saved.starterId)
-    commit(() => ({ elements: saved.elements, poster: saved.poster }))
+    commit((doc) => ({ elements: saved.elements, poster: keepPrefs(saved.poster, doc.poster) }))
     setSelectedIds([])
     notify('Restored')
   }
@@ -281,7 +296,7 @@ function App() {
     const item = library.find((entry) => entry.id === id)
     if (!item) return
     setStarterId(item.starterId)
-    commit(() => ({ elements: item.elements.map((el) => ({ ...el })), poster: item.poster }))
+    commit((doc) => ({ elements: item.elements.map((el) => ({ ...el })), poster: keepPrefs(item.poster, doc.poster) }))
     setSelectedIds([])
     notify('Opened "' + item.name + '"')
   }
@@ -293,6 +308,37 @@ function App() {
     localStorage.setItem(LIBRARY_KEY, JSON.stringify(next))
     setLibrary(next)
     notify('Deleted "' + item.name + '"')
+  }
+
+  function exportJson() {
+    const data = { app: 'margin', version: 1, poster, elements }
+    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'margin-poster.json')
+    notify('JSON downloaded')
+  }
+
+  async function importJson(file) {
+    if (file.size > 2000000) {
+      notify('That file is too big')
+      return
+    }
+    try {
+      const data = JSON.parse(await file.text())
+      if (!data || data.app !== 'margin' || !Array.isArray(data.elements)) throw new Error('not a margin file')
+      // new ids so nothing clashes with what is already on the poster
+      const doc = cleanDoc({ ...data, elements: data.elements.slice(0, 300).map((el) => ({ ...el, id: undefined })) })
+      setStarterId('blank')
+      commit((current) => ({ elements: doc.elements, poster: keepPrefs(doc.poster, current.poster) }))
+      setSelectedIds([])
+      notify('Imported ' + doc.elements.length + ' items')
+    } catch (e) {
+      notify("That doesn't look like a Margin file")
+    }
+  }
+
+  function toggleGrid() {
+    const on = !poster.snapGrid
+    changePoster({ showGrid: on, snapGrid: on })
+    notify(on ? 'Grid on' : 'Grid off')
   }
 
   function editText() {
@@ -357,7 +403,7 @@ function App() {
         moveLayer(-1)
       } else if (key.startsWith('arrow')) {
         e.preventDefault()
-        const step = e.shiftKey ? 10 : 1
+        const step = e.shiftKey ? (poster.snapGrid ? poster.gridSize : 10) : 1
         const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
         const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
         const moves = {}
@@ -382,6 +428,8 @@ function App() {
         onStarter={loadStarter}
         onAdd={addText}
         onAddShape={addShape}
+        gridOn={poster.snapGrid}
+        onGrid={toggleGrid}
         onDuplicate={duplicate}
         onDelete={remove}
         onForward={() => moveLayer(1)}
@@ -446,6 +494,8 @@ function App() {
                 onSave={saveToLibrary}
                 onOpen={openFromLibrary}
                 onDelete={deleteFromLibrary}
+                onExportJson={exportJson}
+                onImportJson={importJson}
               />
             )}
           </div>

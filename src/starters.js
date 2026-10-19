@@ -1,4 +1,4 @@
-import { DEFAULT_POSTER } from './constants.js'
+import { DEFAULT_POSTER, FONTS } from './constants.js'
 
 let counter = 0
 
@@ -7,41 +7,48 @@ export function newId() {
   return 't' + Date.now().toString(36) + counter
 }
 
+const num = (v, fallback, min, max) => (Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback)
+
+export function cleanColor(v, fallback) {
+  return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : fallback
+}
+
+// Both makers fill in defaults and tidy up anything odd, so saved or imported files can't break the editor.
 export function makeText(props = {}) {
+  const t = { text: 'New text', fontFamily: 'Playfair Display', ...props }
   return {
-    id: newId(),
-    text: 'New text',
-    x: 60,
-    y: 80,
-    fontFamily: 'Playfair Display',
-    fontSize: 48,
-    fontWeight: 700,
-    color: '#000000',
-    align: 'left',
-    rotation: 0,
-    letterSpacing: 0,
-    lineHeight: 1.1,
-    italic: false,
-    uppercase: false,
-    hidden: false,
-    highlight: false,
-    ...props,
+    id: typeof t.id === 'string' && t.id ? t.id : newId(),
+    text: String(t.text).slice(0, 2000),
+    x: num(t.x, 60, -5000, 5000),
+    y: num(t.y, 80, -5000, 5000),
+    fontFamily: FONTS.some((f) => f.name === t.fontFamily) ? t.fontFamily : 'Playfair Display',
+    fontSize: num(t.fontSize, 48, 4, 600),
+    fontWeight: [400, 700, 900].includes(t.fontWeight) ? t.fontWeight : 700,
+    color: cleanColor(t.color, '#000000'),
+    align: ['left', 'center', 'right'].includes(t.align) ? t.align : 'left',
+    rotation: num(t.rotation, 0, -360, 360),
+    letterSpacing: num(t.letterSpacing, 0, -1, 2),
+    lineHeight: num(t.lineHeight, 1.1, 0.5, 4),
+    italic: t.italic === true,
+    uppercase: t.uppercase === true,
+    hidden: t.hidden === true,
+    highlight: t.highlight === true,
   }
 }
 
 export function makeShape(props = {}) {
+  const t = props
   return {
-    id: newId(),
+    id: typeof t.id === 'string' && t.id ? t.id : newId(),
     type: 'shape',
-    kind: 'block',
-    x: 60,
-    y: 120,
-    width: 160,
-    height: 160,
-    color: '#000000',
-    rotation: 0,
-    hidden: false,
-    ...props,
+    kind: t.kind === 'rule' ? 'rule' : 'block',
+    x: num(t.x, 60, -5000, 5000),
+    y: num(t.y, 120, -5000, 5000),
+    width: num(t.width, 160, 1, 4000),
+    height: num(t.height, 160, 1, 4000),
+    color: cleanColor(t.color, '#000000'),
+    rotation: num(t.rotation, 0, -360, 360),
+    hidden: t.hidden === true,
   }
 }
 
