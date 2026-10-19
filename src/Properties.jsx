@@ -98,6 +98,18 @@ function PosterSettings({ poster, onPosterChange }) {
       </div>
 
       <div className="field">
+        <span className="label">Export as</span>
+        <div className="segmented">
+          <button aria-pressed={poster.exportFormat === 'png'} onClick={() => onPosterChange({ exportFormat: 'png' })}>
+            PNG
+          </button>
+          <button aria-pressed={poster.exportFormat === 'jpeg'} onClick={() => onPosterChange({ exportFormat: 'jpeg' })}>
+            JPG
+          </button>
+        </div>
+      </div>
+
+      <div className="field">
         <span className="label">Export size</span>
         <div className="segmented">
           {EXPORT_SCALES.map((n) => (
@@ -112,10 +124,11 @@ function PosterSettings({ poster, onPosterChange }) {
         <label className="check">
           <input
             type="checkbox"
-            checked={poster.transparent}
+            checked={poster.transparent && poster.exportFormat === 'png'}
+            disabled={poster.exportFormat === 'jpeg'}
             onChange={(e) => onPosterChange({ transparent: e.target.checked })}
           />
-          Transparent background in the PNG
+          Transparent background (PNG only)
         </label>
       </div>
     </>
@@ -146,7 +159,9 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
   }
 
   const first = selection[0]
-  const text = selection.find((el) => el.type !== 'shape')
+  const painted = selection.find((el) => el.type !== 'image') // text and shapes have a color
+  const picture = selection.find((el) => el.type === 'image')
+  const text = selection.find((el) => el.type !== 'shape' && el.type !== 'image')
   const shape = selection.find((el) => el.type === 'shape')
   const single = selection.length === 1
 
@@ -299,6 +314,21 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
         </>
       )}
 
+      {picture && (
+        <div className="field">
+          <label htmlFor="opacity">Opacity {Math.round(picture.opacity * 100)}%</label>
+          <input
+            id="opacity"
+            type="range"
+            min="5"
+            max="100"
+            value={Math.round(picture.opacity * 100)}
+            onChange={(e) => onChange({ opacity: Number(e.target.value) / 100 }, 'opacity')}
+          />
+        </div>
+      )}
+
+      {painted && (
       <div className="field">
         <span className="label">Color</span>
         <div className="swatches">
@@ -308,18 +338,19 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
               className="swatch"
               style={{ background: c }}
               aria-label={'Color ' + c}
-              aria-pressed={first.color === c}
+              aria-pressed={painted.color === c}
               onClick={() => onChange({ color: c })}
             />
           ))}
           <input
             type="color"
             aria-label="Custom color"
-            value={first.color}
+            value={painted.color}
             onChange={(e) => onChange({ color: e.target.value }, 'color')}
           />
         </div>
       </div>
+      )}
 
       <div className="field">
         <label htmlFor="rotation">Rotation {first.rotation}°</label>

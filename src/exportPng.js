@@ -3,6 +3,7 @@ import { downloadBlob } from './download.js'
 
 export async function exportPng(elements, poster) {
   const scale = poster.exportScale || 3
+  const type = poster.exportFormat === 'jpeg' ? 'image/jpeg' : 'image/png'
   const visible = elements.filter((el) => !el.hidden)
 
   const canvas = document.createElement('canvas')
@@ -10,7 +11,7 @@ export async function exportPng(elements, poster) {
   canvas.height = poster.height * scale
   const ctx = canvas.getContext('2d')
   ctx.scale(scale, scale)
-  if (!poster.transparent) {
+  if (!poster.transparent || type === 'image/jpeg') {
     ctx.fillStyle = poster.background
     ctx.fillRect(0, 0, poster.width, poster.height)
   }
@@ -25,14 +26,46 @@ export async function exportPng(elements, poster) {
     // fall back to whatever fonts are available
   }
 
-  visible.forEach((el) => (el.type === 'shape' ? drawShape(ctx, el) : drawText(ctx, el)))
+  const pictures = {}
+  await Promise.all(
+    visible
+      .filter((el) => el.type === 'image')
+      .map(
+        (el) =>
+          new Promise((resolve) => {
+            const img = new Image()
+            img.onload = () => {
+              pictures[el.id] = img
+              resolve()
+            }
+            img.onerror = resolve
+            img.src = el.src
+          })
+      )
+  )
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
-  downloadBlob(blob, 'margin-poster.png')
+  visible.forEach((el) => {
+    if (el.type === 'shape') drawShape(ctx, el)
+    else if (el.type === 'image') drawPicture(ctx, el, pictures[el.id])
+    else drawText(ctx, el)
+  })
+
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, type, 0.92))
+  downloadBlob(blob, type === 'image/jpeg' ? 'margin-poster.jpg' : 'margin-poster.png')
 }
 
 function fontStyle(el) {
   return `${el.italic ? 'italic ' : ''}${el.fontWeight}`
+}
+
+function drawPicture(ctx, el, img) {
+  if (!img) return
+  ctx.save()
+  ctx.translate(el.x + el.width / 2, el.y + el.height / 2)
+  ctx.rotate((el.rotation * Math.PI) / 180)
+  ctx.globalAlpha = el.opacity
+  ctx.drawImage(img, -el.width / 2, -el.height / 2, el.width, el.height)
+  ctx.restore()
 }
 
 function drawShape(ctx, el) {

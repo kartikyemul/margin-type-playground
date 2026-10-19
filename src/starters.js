@@ -52,8 +52,29 @@ export function makeShape(props = {}) {
   }
 }
 
+// Only images this app made itself are accepted (PNG or JPEG data), so a bad file can't smuggle anything in.
+export function makeImage(props = {}) {
+  const t = props
+  const ok = typeof t.src === 'string' && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(t.src) && t.src.length < 8000000
+  if (!ok) return null
+  return {
+    id: typeof t.id === 'string' && t.id ? t.id : newId(),
+    type: 'image',
+    src: t.src,
+    x: num(t.x, 60, -5000, 5000),
+    y: num(t.y, 80, -5000, 5000),
+    width: num(t.width, 200, 10, 4000),
+    height: num(t.height, 200, 10, 4000),
+    rotation: num(t.rotation, 0, -360, 360),
+    opacity: num(t.opacity, 1, 0.05, 1),
+    hidden: t.hidden === true,
+  }
+}
+
 export function makeItem(props = {}) {
-  return props.type === 'shape' ? makeShape(props) : makeText(props)
+  if (props.type === 'shape') return makeShape(props)
+  if (props.type === 'image') return makeImage(props)
+  return makeText(props)
 }
 
 export const STARTERS = [

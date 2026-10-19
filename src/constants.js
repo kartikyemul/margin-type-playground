@@ -14,6 +14,7 @@ export const DEFAULT_POSTER = {
   background: '#ffffff',
   exportScale: 3,
   transparent: false,
+  exportFormat: 'png',
   showGrid: false,
   snapGrid: false,
   gridSize: 20,

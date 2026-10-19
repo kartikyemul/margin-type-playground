@@ -4,8 +4,8 @@ import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
 import Layers from './Layers.jsx'
 import Library from './Library.jsx'
-import { STARTERS, buildElements, buildPoster, cleanColor, makeItem, makeShape, makeText, newId } from './starters.js'
-import { downloadBlob } from './download.js'
+import { STARTERS, buildElements, buildPoster, cleanColor, makeImage, makeItem, makeShape, makeText, newId } from './starters.js'
+import { readImage } from './images.js'
 import { exportPng } from './exportPng.js'
 import { DEFAULT_POSTER, MARGIN } from './constants.js'
 
@@ -13,7 +13,7 @@ const STORAGE_KEY = 'margin-composition'
 const LIBRARY_KEY = 'margin-library'
 
 // settings that belong to you rather than to a particular poster
-const PREF_KEYS = ['showGrid', 'snapGrid', 'gridSize', 'exportScale', 'transparent']
+const PREF_KEYS = ['showGrid', 'snapGrid', 'gridSize', 'exportScale', 'exportFormat', 'transparent']
 
 function keepPrefs(newPoster, oldPoster) {
   const prefs = {}
@@ -35,6 +35,7 @@ function cleanPoster(saved) {
   poster.snapGrid = poster.snapGrid === true
   if (![10, 20, 40].includes(poster.gridSize)) poster.gridSize = DEFAULT_POSTER.gridSize
   if (![1, 2, 3].includes(poster.exportScale)) poster.exportScale = DEFAULT_POSTER.exportScale
+  if (!['png', 'jpeg'].includes(poster.exportFormat)) poster.exportFormat = DEFAULT_POSTER.exportFormat
   poster.transparent = poster.transparent === true
   return poster
 }
@@ -45,8 +46,9 @@ function cleanDoc(data) {
     poster: cleanPoster(data.poster),
     starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
     elements: data.elements
-      .filter((el) => el && (el.type === 'shape' || typeof el.text === 'string'))
-      .map((el) => makeItem(el)),
+      .filter((el) => el && (el.type === 'shape' || el.type === 'image' || typeof el.text === 'string'))
+      .map((el) => makeItem(el))
+      .filter(Boolean),
   }
 }
 
@@ -310,29 +312,41 @@ function App() {
     notify('Deleted "' + item.name + '"')
   }
 
-  function exportJson() {
-    const data = { app: 'margin', version: 1, poster, elements }
-    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'margin-poster.json')
-    notify('JSON downloaded')
-  }
+  const imageInput = useRef(null)
 
-  async function importJson(file) {
-    if (file.size > 2000000) {
-      notify('That file is too big')
-      return
+  async function addImages(fileList) {
+    const files = [...fileList].filter((file) => file.type.startsWith('image/')).slice(0, 10)
+    if (files.length === 0) return
+    const added = []
+    for (const file of files) {
+      try {
+        const picture = await readImage(file)
+        // fit it inside most of the poster, centred, nudging each extra one
+        const fit = Math.min((poster.width * 0.7) / picture.width, (poster.height * 0.7) / picture.height, 1)
+        const width = Math.round(picture.width * fit)
+        const height = Math.round(picture.height * fit)
+        const nudge = added.length * 20
+        added.push(
+          makeImage({
+            src: picture.src,
+            width,
+            height,
+            x: Math.round((poster.width - width) / 2) + nudge,
+            y: Math.round((poster.height - height) / 2) + nudge,
+          })
+        )
+      } catch (e) {
+        if (e.message === 'size') notify('That image is too big (20 MB max)')
+        else if (e.message === 'type') notify('Please choose a PNG or JPEG image')
+        else notify("Couldn't read that image")
+      }
     }
-    try {
-      const data = JSON.parse(await file.text())
-      if (!data || data.app !== 'margin' || !Array.isArray(data.elements)) throw new Error('not a margin file')
-      // new ids so nothing clashes with what is already on the poster
-      const doc = cleanDoc({ ...data, elements: data.elements.slice(0, 300).map((el) => ({ ...el, id: undefined })) })
-      setStarterId('blank')
-      commit((current) => ({ elements: doc.elements, poster: keepPrefs(doc.poster, current.poster) }))
-      setSelectedIds([])
-      notify('Imported ' + doc.elements.length + ' items')
-    } catch (e) {
-      notify("That doesn't look like a Margin file")
-    }
+    const good = added.filter(Boolean)
+    if (good.length === 0) return
+    commit((doc) => ({ ...doc, elements: [...doc.elements, ...good] }))
+    setSelectedIds(good.map((el) => el.id))
+    setTab('style')
+    notify(good.length > 1 ? good.length + ' images added' : 'Image added')
   }
 
   function toggleGrid() {
@@ -349,7 +363,7 @@ function App() {
   async function exportImage() {
     try {
       await exportPng(elements, poster)
-      notify('PNG exported')
+      notify(poster.exportFormat === 'jpeg' ? 'JPG exported' : 'PNG exported')
     } catch (e) {
       notify('Export failed')
     }
@@ -418,6 +432,20 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
+  useEffect(() => {
+    function onPaste(e) {
+      const tag = e.target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      const files = [...e.clipboardData.files].filter((file) => file.type.startsWith('image/'))
+      if (files.length > 0) {
+        e.preventDefault()
+        addImages(files)
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  })
+
   return (
     <div className="app">
       <Toolbar
@@ -428,6 +456,8 @@ function App() {
         onStarter={loadStarter}
         onAdd={addText}
         onAddShape={addShape}
+        onAddImage={() => imageInput.current.click()}
+        exportLabel={poster.exportFormat === 'jpeg' ? 'Export JPG' : 'Export PNG'}
         gridOn={poster.snapGrid}
         onGrid={toggleGrid}
         onDuplicate={duplicate}
@@ -449,6 +479,7 @@ function App() {
           onSelect={select}
           onMove={moveElements}
           onEdit={editText}
+          onDropFiles={addImages}
         />
         <aside className="sidebar">
           <div className="tabs" role="tablist">
@@ -494,13 +525,22 @@ function App() {
                 onSave={saveToLibrary}
                 onOpen={openFromLibrary}
                 onDelete={deleteFromLibrary}
-                onExportJson={exportJson}
-                onImportJson={importJson}
               />
             )}
           </div>
         </aside>
       </main>
+      <input
+        ref={imageInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        hidden
+        onChange={(e) => {
+          addImages(e.target.files)
+          e.target.value = ''
+        }}
+      />
       {toast && (
         <div className="toast" role="status">
           {toast}

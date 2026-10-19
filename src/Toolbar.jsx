@@ -8,6 +8,8 @@ function Toolbar({
   onStarter,
   onAdd,
   onAddShape,
+  onAddImage,
+  exportLabel,
   gridOn,
   onGrid,
   onDuplicate,
@@ -25,15 +27,22 @@ function Toolbar({
     <header className="toolbar">
       <span className="wordmark">Margin</span>
 
-      <button className="btn" onClick={onAdd} title="Add text (T)">
-        Add text
+      <span className="group-label">Add</span>
+      <button className="btn" onClick={onAdd} aria-label="Add text" title="Add text (T)">
+        Text
       </button>
-      <button className="btn" onClick={() => onAddShape('rule')} title="Add a thin line">
-        Add rule
+      <button className="btn" onClick={onAddImage} aria-label="Add image" title="Add a PNG or JPEG (or drop or paste one)">
+        Image
       </button>
-      <button className="btn" onClick={() => onAddShape('block')} title="Add a solid block of color">
-        Add block
+      <button className="btn" onClick={() => onAddShape('rule')} aria-label="Add rule" title="Add a thin line">
+        Rule
       </button>
+      <button className="btn" onClick={() => onAddShape('block')} aria-label="Add block" title="Add a solid block of color">
+        Block
+      </button>
+
+      <span className="divider" />
+
       <button className="btn" onClick={onDuplicate} disabled={!hasSelection} title="Duplicate (Ctrl D)">
         Duplicate
       </button>
@@ -88,7 +97,7 @@ function Toolbar({
         Restore
       </button>
       <button className="btn primary" onClick={onExport}>
-        Export PNG
+        {exportLabel}
       </button>
     </header>
   )

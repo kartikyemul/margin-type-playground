@@ -1,11 +1,12 @@
 function labelFor(el) {
+  if (el.type === 'image') return 'Image'
   if (el.type === 'shape') return el.kind === 'rule' ? 'Rule' : 'Block'
   return el.text.split('\n')[0].trim() || 'Empty text'
 }
 
 function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
   if (elements.length === 0) {
-    return <p className="hint">Nothing here yet. Add some text, a rule or a block from the toolbar.</p>
+    return <p className="hint">Nothing here yet. Add some text, an image, a rule or a block from the toolbar.</p>
   }
 
   const last = elements.length - 1

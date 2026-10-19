@@ -23,7 +23,7 @@ function snapAxis(pos, size, total, threshold) {
   return best ? { pos: pos + best.diff, guide: best.goal } : { pos, guide: null }
 }
 
-function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
+function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDropFiles }) {
   const stageRef = useRef(null)
   const drag = useRef(null)
   const handleDrag = useRef(null)
@@ -177,6 +177,15 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
       if (sy !== 0) h = snap(d.h + sy * ly)
       changes.width = w
       changes.height = h
+    } else if (d.el.type === 'image') {
+      // pictures keep their proportions
+      const diagonal = Math.hypot(d.w, d.h)
+      const along = (lx * sx * d.w + ly * sy * d.h) / diagonal
+      const ratio = Math.min(4000 / d.w, Math.max(20 / d.w, 1 + along / diagonal))
+      w = d.w * ratio
+      h = d.h * ratio
+      changes.width = Math.round(w)
+      changes.height = Math.round(h)
     } else {
       // text scales its font size, following the diagonal
       const diagonal = Math.hypot(d.w, d.h)
@@ -215,7 +224,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
   function renderHandles(el) {
     const size = 11 / scale
     const reach = 26 / scale
-    const dirs = el.type === 'shape' ? SHAPE_HANDLES : TEXT_HANDLES
+    const dirs = el.type === 'shape' ? SHAPE_HANDLES : TEXT_HANDLES // text and pictures only scale from the corners
     const handleProps = (kind) => ({
       onPointerDown: (e) => startHandle(e, el, kind),
       onPointerMove: moveHandle,
@@ -253,7 +262,16 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
   const onlyId = selectedIds.length === 1 ? selectedIds[0] : null
 
   return (
-    <div className="stage" ref={stageRef} onPointerDown={() => onSelect(null)}>
+    <div
+      className="stage"
+      ref={stageRef}
+      onPointerDown={() => onSelect(null)}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault()
+        onDropFiles(e.dataTransfer.files)
+      }}
+    >
       <div className="poster-frame" style={{ width: poster.width * scale + 2, height: poster.height * scale + 2 }}>
         <div
           className="poster"
@@ -279,6 +297,27 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
             .map((el) => {
               const selected = selectedIds.includes(el.id)
               const handles = el.id === onlyId ? renderHandles(el) : null
+
+              if (el.type === 'image') {
+                return (
+                  <div
+                    key={el.id}
+                    className={'item image-el' + (selected ? ' selected' : '')}
+                    style={{
+                      left: el.x,
+                      top: el.y,
+                      width: el.width,
+                      height: el.height,
+                      opacity: el.opacity,
+                      transform: `rotate(${el.rotation}deg)`,
+                    }}
+                    {...itemProps(el)}
+                  >
+                    <img src={el.src} alt="" draggable={false} />
+                    {handles}
+                  </div>
+                )
+              }
 
               if (el.type === 'shape') {
                 return (
