@@ -50,8 +50,8 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 6px;
-  padding: 10px 16px;
+  gap: 8px 5px;
+  padding: 10px 14px;
   border-bottom: 1px solid #000;
 }
 
@@ -68,7 +68,7 @@ textarea {
 .divider {
   width: 1px;
   height: 20px;
-  margin: 0 6px;
+  margin: 0 4px;
   background: #000;
 }
 
@@ -80,13 +80,17 @@ textarea {
   white-space: nowrap;
   font-size: 13px;
   line-height: 1;
-  padding: 8px 11px;
+  padding: 8px 10px;
   border: 1px solid #000;
   background: #fff;
   cursor: pointer;
 }
 
 .btn:hover:not(:disabled) {
+  background: var(--yellow);
+}
+
+.btn[aria-pressed='true'] {
   background: var(--yellow);
 }
 
@@ -192,12 +196,45 @@ textarea {
 
 .item:hover {
   outline: 1px dashed #999;
-  outline-offset: 6px;
+  outline-offset: 2px;
 }
 
 .item.selected {
   outline: 1px solid #000;
-  outline-offset: 6px;
+  outline-offset: 2px;
+}
+
+.grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  z-index: 2;
+  background: #fff;
+  border: 1px solid #000;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+}
+
+.handle.rotate {
+  background: var(--yellow);
+  cursor: grab;
+}
+
+.handle.rotate:active {
+  cursor: grabbing;
+}
+
+.rotate-line {
+  position: absolute;
+  left: 50%;
+  background: #000;
+  pointer-events: none;
+  transform: translateX(-50%);
 }
 
 .line {
@@ -340,6 +377,20 @@ textarea {
   margin-bottom: 6px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.field label.check + label.check,
+.field label.check + .segmented {
+  margin-top: 8px;
 }
 
 .field label.check {

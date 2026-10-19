@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { HIGHLIGHT, MARGIN, fontStack } from './constants.js'
 
+const SHAPE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+const TEXT_HANDLES = ['nw', 'ne', 'se', 'sw']
+
+const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' }
+
 // Snap one axis: the element's start, middle or end can lock onto the margin or the centre.
 function snapAxis(pos, size, total, threshold) {
   const options = [
@@ -21,9 +26,12 @@ function snapAxis(pos, size, total, threshold) {
 function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
   const stageRef = useRef(null)
   const drag = useRef(null)
+  const handleDrag = useRef(null)
   const dragCount = useRef(0)
   const [scale, setScale] = useState(0.7)
   const [guides, setGuides] = useState({ x: null, y: null })
+
+  const grid = poster.snapGrid ? poster.gridSize : 0
 
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
@@ -90,6 +98,9 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
       y = sy.pos
       guideX = sx.guide
       guideY = sy.guide
+      // no guide nearby, so fall back to the grid if it's switched on
+      if (grid && guideX === null) x = Math.round(x / grid) * grid
+      if (grid && guideY === null) y = Math.round(y / grid) * grid
     }
     setGuides({ x: guideX, y: guideY })
 
@@ -115,6 +126,82 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
     setGuides({ x: null, y: null })
   }
 
+  // Resize and rotate handles (only shown when a single item is selected)
+  function startHandle(e, el, kind) {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const node = e.currentTarget.parentElement
+    const rect = node.getBoundingClientRect()
+    dragCount.current += 1
+    handleDrag.current = {
+      kind,
+      el,
+      session: dragCount.current,
+      startX: e.clientX,
+      startY: e.clientY,
+      w: node.offsetWidth,
+      h: node.offsetHeight,
+      cx: rect.left + rect.width / 2,
+      cy: rect.top + rect.height / 2,
+    }
+  }
+
+  function moveHandle(e) {
+    const d = handleDrag.current
+    if (!d) return
+
+    if (d.kind === 'rotate') {
+      let deg = (Math.atan2(e.clientY - d.cy, e.clientX - d.cx) * 180) / Math.PI + 90
+      deg = ((((deg + 180) % 360) + 360) % 360) - 180
+      if (e.shiftKey) deg = Math.round(deg / 15) * 15
+      onMove({ [d.el.id]: { rotation: Math.round(deg) } }, 'rotate-' + d.session)
+      return
+    }
+
+    // turn the pointer movement into the item's own (rotated) directions
+    const rad = (d.el.rotation * Math.PI) / 180
+    const dx = (e.clientX - d.startX) / scale
+    const dy = (e.clientY - d.startY) / scale
+    const lx = dx * Math.cos(rad) + dy * Math.sin(rad)
+    const ly = -dx * Math.sin(rad) + dy * Math.cos(rad)
+    const sx = d.kind.includes('e') ? 1 : d.kind.includes('w') ? -1 : 0
+    const sy = d.kind.includes('s') ? 1 : d.kind.includes('n') ? -1 : 0
+
+    let w = d.w
+    let h = d.h
+    const changes = {}
+
+    if (d.el.type === 'shape') {
+      const snap = (v) => (grid ? Math.max(grid, Math.round(v / grid) * grid) : Math.max(1, Math.round(v)))
+      if (sx !== 0) w = snap(d.w + sx * lx)
+      if (sy !== 0) h = snap(d.h + sy * ly)
+      changes.width = w
+      changes.height = h
+    } else {
+      // text scales its font size, following the diagonal
+      const diagonal = Math.hypot(d.w, d.h)
+      const along = (lx * sx * d.w + ly * sy * d.h) / diagonal
+      const size = Math.round(Math.min(400, Math.max(8, d.el.fontSize * (1 + along / diagonal))))
+      const ratio = size / d.el.fontSize
+      w = d.w * ratio
+      h = d.h * ratio
+      changes.fontSize = size
+    }
+
+    // keep the opposite edge or corner where it was
+    const shiftX = (sx * (w - d.w)) / 2
+    const shiftY = (sy * (h - d.h)) / 2
+    const cx = d.el.x + d.w / 2 + shiftX * Math.cos(rad) - shiftY * Math.sin(rad)
+    const cy = d.el.y + d.h / 2 + shiftX * Math.sin(rad) + shiftY * Math.cos(rad)
+    changes.x = Math.round(cx - w / 2)
+    changes.y = Math.round(cy - h / 2)
+    onMove({ [d.el.id]: changes }, 'resize-' + d.session)
+  }
+
+  function endHandle() {
+    handleDrag.current = null
+  }
+
   function itemProps(el) {
     return {
       'data-id': el.id,
@@ -124,6 +211,46 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
       onPointerCancel: endDrag,
     }
   }
+
+  function renderHandles(el) {
+    const size = 11 / scale
+    const reach = 26 / scale
+    const dirs = el.type === 'shape' ? SHAPE_HANDLES : TEXT_HANDLES
+    const handleProps = (kind) => ({
+      onPointerDown: (e) => startHandle(e, el, kind),
+      onPointerMove: moveHandle,
+      onPointerUp: endHandle,
+      onPointerCancel: endHandle,
+    })
+
+    return (
+      <>
+        <div className="rotate-line" style={{ top: -reach, height: reach, width: 1 / scale }} />
+        <div
+          className="handle rotate"
+          style={{ left: '50%', top: -reach, width: size, height: size }}
+          title="Rotate (hold Shift for 15° steps)"
+          {...handleProps('rotate')}
+        />
+        {dirs.map((dir) => (
+          <div
+            key={dir}
+            className="handle"
+            style={{
+              left: dir.includes('w') ? 0 : dir.includes('e') ? '100%' : '50%',
+              top: dir.includes('n') ? 0 : dir.includes('s') ? '100%' : '50%',
+              width: size,
+              height: size,
+              cursor: CURSORS[dir],
+            }}
+            {...handleProps(dir)}
+          />
+        ))}
+      </>
+    )
+  }
+
+  const onlyId = selectedIds.length === 1 ? selectedIds[0] : null
 
   return (
     <div className="stage" ref={stageRef} onPointerDown={() => onSelect(null)}>
@@ -137,10 +264,21 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
             transform: `scale(${scale})`,
           }}
         >
+          {poster.showGrid && (
+            <svg className="grid" width={poster.width} height={poster.height} aria-hidden="true">
+              <defs>
+                <pattern id="grid-pattern" width={poster.gridSize} height={poster.gridSize} patternUnits="userSpaceOnUse">
+                  <path d={`M ${poster.gridSize} 0 H 0 V ${poster.gridSize}`} fill="none" stroke="#808080" strokeOpacity="0.35" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+            </svg>
+          )}
           {elements
             .filter((el) => !el.hidden)
             .map((el) => {
               const selected = selectedIds.includes(el.id)
+              const handles = el.id === onlyId ? renderHandles(el) : null
 
               if (el.type === 'shape') {
                 return (
@@ -156,7 +294,9 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
                       transform: `rotate(${el.rotation}deg)`,
                     }}
                     {...itemProps(el)}
-                  />
+                  >
+                    {handles}
+                  </div>
                 )
               }
 
@@ -188,6 +328,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit }) {
                       </span>
                     </div>
                   ))}
+                  {handles}
                 </div>
               )
             })}
