@@ -1,4 +1,5 @@
 import { FONTS, FORMATS } from './constants.js'
+import { IMAGE_BUDGET } from './images.js'
 
 const WEIGHTS = [
   { label: 'Regular', value: 400 },
@@ -13,6 +14,7 @@ const ALIGNMENTS = [
 ]
 
 const COLORS = ['#000000', '#8a8a8a', '#d62828', '#1f3fd1', '#ffe94a']
+const COLOR_NAMES = { '#000000': 'black', '#8a8a8a': 'grey', '#d62828': 'red', '#1f3fd1': 'blue', '#ffe94a': 'yellow', '#ffffff': 'white', '#e9e9e9': 'light grey' }
 const BACKGROUNDS = ['#ffffff', '#e9e9e9', '#ffe94a', '#000000']
 const EXPORT_SCALES = [1, 2, 3]
 const GRID_SIZES = [10, 20, 40]
@@ -21,9 +23,13 @@ const SHORTCUTS = [
   ['T', 'Add text'],
   ['Ctrl D', 'Duplicate'],
   ['Delete', 'Remove'],
+  ['Drag empty space', 'Select with a box'],
   ['Shift click', 'Select several'],
   ['Ctrl A', 'Select all'],
   ['Arrows', 'Nudge (Shift for more)'],
+  ['+  -', 'Larger, smaller'],
+  ['R', 'Rotate (Shift for the other way)'],
+  ['Tab', 'Move between items'],
   ['[  ]', 'Send back, bring forward'],
   ['Ctrl Z', 'Undo'],
   ['Ctrl Shift Z', 'Redo'],
@@ -33,7 +39,7 @@ const SHORTCUTS = [
   ['Shift rotate', 'Turn in 15° steps'],
 ]
 
-function PosterSettings({ poster, onPosterChange }) {
+function PosterSettings({ poster, onPosterChange, imageBytes }) {
   const format = FORMATS.find((f) => f.width === poster.width && f.height === poster.height) || FORMATS[0]
 
   return (
@@ -58,13 +64,13 @@ function PosterSettings({ poster, onPosterChange }) {
 
       <div className="field">
         <span className="label">Background</span>
-        <div className="swatches">
+        <div className="swatches" role="group" aria-label="Background color">
           {BACKGROUNDS.map((c) => (
             <button
               key={c}
               className="swatch"
               style={{ background: c }}
-              aria-label={'Background ' + c}
+              aria-label={'Background ' + (COLOR_NAMES[c] || c)}
               aria-pressed={poster.background === c}
               onClick={() => onPosterChange({ background: c })}
             />
@@ -88,7 +94,7 @@ function PosterSettings({ poster, onPosterChange }) {
           <input type="checkbox" checked={poster.snapGrid} onChange={(e) => onPosterChange({ snapGrid: e.target.checked })} />
           Snap to grid
         </label>
-        <div className="segmented">
+        <div className="segmented" role="group" aria-label="Grid size">
           {GRID_SIZES.map((n) => (
             <button key={n} aria-pressed={poster.gridSize === n} onClick={() => onPosterChange({ gridSize: n })}>
               {n} px
@@ -99,7 +105,7 @@ function PosterSettings({ poster, onPosterChange }) {
 
       <div className="field">
         <span className="label">Export as</span>
-        <div className="segmented">
+        <div className="segmented" role="group" aria-label="Export as">
           <button aria-pressed={poster.exportFormat === 'png'} onClick={() => onPosterChange({ exportFormat: 'png' })}>
             PNG
           </button>
@@ -111,7 +117,7 @@ function PosterSettings({ poster, onPosterChange }) {
 
       <div className="field">
         <span className="label">Export size</span>
-        <div className="segmented">
+        <div className="segmented" role="group" aria-label="Export size">
           {EXPORT_SCALES.map((n) => (
             <button key={n} aria-pressed={poster.exportScale === n} onClick={() => onPosterChange({ exportScale: n })}>
               {n}×
@@ -121,6 +127,11 @@ function PosterSettings({ poster, onPosterChange }) {
         <p className="hint small top">
           {poster.width * poster.exportScale} × {poster.height * poster.exportScale} px
         </p>
+        {imageBytes > 0 && (
+          <p className="hint small top">
+            Pictures use {(imageBytes / 1000000).toFixed(1)} of {IMAGE_BUDGET / 1000000} MB the poster can hold.
+          </p>
+        )}
         <label className="check">
           <input
             type="checkbox"
@@ -135,11 +146,11 @@ function PosterSettings({ poster, onPosterChange }) {
   )
 }
 
-function Properties({ selection, poster, textRef, onChange, onPosterChange, onAlign }) {
+function Properties({ selection, poster, textRef, onChange, onPosterChange, onAlign, onScale, onFit, imageBytes }) {
   if (selection.length === 0) {
     return (
       <div>
-        <PosterSettings poster={poster} onPosterChange={onPosterChange} />
+        <PosterSettings poster={poster} onPosterChange={onPosterChange} imageBytes={imageBytes} />
         <p className="hint">
           Select something on the poster to style it, or add something new. Double-click text to edit it.
         </p>
@@ -184,17 +195,39 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
 
       <div className="field">
         <span className="label">Align to poster</span>
-        <div className="segmented">
+        <div className="segmented" role="group" aria-label="Align horizontally">
           <button onClick={() => onAlign('left')}>Left</button>
           <button onClick={() => onAlign('center')}>Center</button>
           <button onClick={() => onAlign('right')}>Right</button>
         </div>
-        <div className="segmented">
+        <div className="segmented" role="group" aria-label="Align vertically">
           <button onClick={() => onAlign('top')}>Top</button>
           <button onClick={() => onAlign('middle')}>Middle</button>
           <button onClick={() => onAlign('bottom')}>Bottom</button>
         </div>
       </div>
+
+      <div className="field">
+        <span className="label">Size</span>
+        <div className="segmented" role="group" aria-label="Size">
+          <button onClick={() => onScale(1 / 1.1)} aria-label="Make smaller">
+            Smaller
+          </button>
+          <button onClick={() => onScale(1.1)} aria-label="Make larger">
+            Larger
+          </button>
+        </div>
+      </div>
+
+      {picture && (
+        <div className="field">
+          <span className="label">Picture</span>
+          <div className="segmented" role="group" aria-label="Fit picture to poster">
+            <button onClick={() => onFit('fit')}>Fit poster</button>
+            <button onClick={() => onFit('fill')}>Fill poster</button>
+          </div>
+        </div>
+      )}
 
       {shape && (
         <>
@@ -276,7 +309,7 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
 
           <div className="field">
             <span className="label">Weight</span>
-            <div className="segmented">
+            <div className="segmented" role="group" aria-label="Weight">
               {WEIGHTS.map((w) => (
                 <button
                   key={w.value}
@@ -291,7 +324,7 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
 
           <div className="field">
             <span className="label">Style</span>
-            <div className="segmented">
+            <div className="segmented" role="group" aria-label="Style">
               <button aria-pressed={text.italic} onClick={() => onChange({ italic: !text.italic })}>
                 Italic
               </button>
@@ -303,7 +336,7 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
 
           <div className="field">
             <span className="label">Alignment</span>
-            <div className="segmented">
+            <div className="segmented" role="group" aria-label="Text alignment">
               {ALIGNMENTS.map((a) => (
                 <button key={a.value} aria-pressed={text.align === a.value} onClick={() => onChange({ align: a.value })}>
                   {a.label}
@@ -331,13 +364,13 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
       {painted && (
       <div className="field">
         <span className="label">Color</span>
-        <div className="swatches">
+        <div className="swatches" role="group" aria-label="Color">
           {COLORS.map((c) => (
             <button
               key={c}
               className="swatch"
               style={{ background: c }}
-              aria-label={'Color ' + c}
+              aria-label={'Color ' + (COLOR_NAMES[c] || c)}
               aria-pressed={painted.color === c}
               onClick={() => onChange({ color: c })}
             />

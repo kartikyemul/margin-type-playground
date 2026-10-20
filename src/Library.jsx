@@ -38,10 +38,10 @@ function Library({ library, onSave, onOpen, onDelete }) {
                 {item.name}
                 <span className="date">{new Date(item.savedAt).toLocaleDateString()}</span>
               </span>
-              <button className="mini" onClick={() => onOpen(item.id)}>
+              <button className="mini" aria-label={'Open ' + item.name} onClick={() => onOpen(item.id)}>
                 Open
               </button>
-              <button className="mini" onClick={() => onDelete(item.id)}>
+              <button className="mini" aria-label={'Delete ' + item.name} onClick={() => onDelete(item.id)}>
                 Delete
               </button>
             </li>

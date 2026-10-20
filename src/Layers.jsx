@@ -1,8 +1,4 @@
-function labelFor(el) {
-  if (el.type === 'image') return 'Image'
-  if (el.type === 'shape') return el.kind === 'rule' ? 'Rule' : 'Block'
-  return el.text.split('\n')[0].trim() || 'Empty text'
-}
+import { describe } from './starters.js'
 
 function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
   if (elements.length === 0) {
@@ -20,16 +16,16 @@ function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
           const current = selectedIds.includes(el.id)
           return (
             <li key={el.id} className={'row' + (current ? ' current' : '') + (el.hidden ? ' off' : '')}>
-              <button className="row-name" onClick={(e) => onSelect(el.id, e.shiftKey)}>
-                {labelFor(el)}
+              <button className="row-name" aria-pressed={current} onClick={(e) => onSelect(el.id, e.shiftKey)}>
+                {describe(el)}
               </button>
-              <button className="mini" onClick={() => onMove(el.id, 1)} disabled={index === last} aria-label="Bring forward">
+              <button className="mini" onClick={() => onMove(el.id, 1)} disabled={index === last} aria-label={'Bring ' + describe(el) + ' forward'}>
                 Up
               </button>
-              <button className="mini" onClick={() => onMove(el.id, -1)} disabled={index === 0} aria-label="Send backward">
+              <button className="mini" onClick={() => onMove(el.id, -1)} disabled={index === 0} aria-label={'Send ' + describe(el) + ' backward'}>
                 Down
               </button>
-              <button className="mini" onClick={() => onToggle(el.id)}>
+              <button className="mini" aria-label={(el.hidden ? 'Show ' : 'Hide ') + describe(el)} onClick={() => onToggle(el.id)}>
                 {el.hidden ? 'Show' : 'Hide'}
               </button>
             </li>

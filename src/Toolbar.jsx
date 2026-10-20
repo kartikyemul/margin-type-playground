@@ -24,7 +24,7 @@ function Toolbar({
   onExport,
 }) {
   return (
-    <header className="toolbar">
+    <div className="toolbar" role="toolbar" aria-label="Editor tools">
       <span className="wordmark">Margin</span>
 
       <span className="group-label">Add</span>
@@ -99,7 +99,7 @@ function Toolbar({
       <button className="btn primary" onClick={onExport}>
         {exportLabel}
       </button>
-    </header>
+    </div>
   )
 }
 
