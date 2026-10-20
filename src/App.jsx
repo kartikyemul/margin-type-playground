@@ -4,53 +4,21 @@ import Canvas from './Canvas.jsx'
 import Properties from './Properties.jsx'
 import Layers from './Layers.jsx'
 import Library from './Library.jsx'
-import { STARTERS, buildElements, buildPoster, cleanColor, makeImage, makeItem, makeShape, makeText, newId } from './starters.js'
-import { readImage } from './images.js'
+import { STARTERS, buildElements, buildPoster, makeImage, makeShape, makeText, newId } from './starters.js'
+import { IMAGE_BUDGET, hasRoomFor, imagesSize, readImage } from './images.js'
+import { cleanDoc, keepPrefs } from './doc.js'
+import { fitRect, normalizeAngle, scaleBox } from './geometry.js'
 import { exportPng } from './exportPng.js'
-import { DEFAULT_POSTER, MARGIN } from './constants.js'
+import { MARGIN } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
 const LIBRARY_KEY = 'margin-library'
 
-// settings that belong to you rather than to a particular poster
-const PREF_KEYS = ['showGrid', 'snapGrid', 'gridSize', 'exportScale', 'exportFormat', 'transparent']
-
-function keepPrefs(newPoster, oldPoster) {
-  const prefs = {}
-  PREF_KEYS.forEach((key) => {
-    prefs[key] = oldPoster[key]
-  })
-  return { ...newPoster, ...prefs }
-}
-
-function cleanPoster(saved) {
-  const poster = { ...DEFAULT_POSTER, ...saved }
-  const sizeOk = (n) => Number.isFinite(n) && n >= 200 && n <= 2000
-  if (!sizeOk(poster.width) || !sizeOk(poster.height)) {
-    poster.width = DEFAULT_POSTER.width
-    poster.height = DEFAULT_POSTER.height
-  }
-  poster.background = cleanColor(poster.background, DEFAULT_POSTER.background)
-  poster.showGrid = poster.showGrid === true
-  poster.snapGrid = poster.snapGrid === true
-  if (![10, 20, 40].includes(poster.gridSize)) poster.gridSize = DEFAULT_POSTER.gridSize
-  if (![1, 2, 3].includes(poster.exportScale)) poster.exportScale = DEFAULT_POSTER.exportScale
-  if (!['png', 'jpeg'].includes(poster.exportFormat)) poster.exportFormat = DEFAULT_POSTER.exportFormat
-  poster.transparent = poster.transparent === true
-  return poster
-}
-
-function cleanDoc(data) {
-  if (!data || !Array.isArray(data.elements)) return null
-  return {
-    poster: cleanPoster(data.poster),
-    starterId: STARTERS.some((s) => s.id === data.starterId) ? data.starterId : 'quiet-hours',
-    elements: data.elements
-      .filter((el) => el && (el.type === 'shape' || el.type === 'image' || typeof el.text === 'string'))
-      .map((el) => makeItem(el))
-      .filter(Boolean),
-  }
-}
+const TABS = [
+  ['style', 'Style'],
+  ['layers', 'Layers'],
+  ['posters', 'Posters'],
+]
 
 function loadSaved() {
   try {
@@ -201,6 +169,54 @@ function App() {
     notify(step > 0 ? 'Brought forward' : 'Sent backward')
   }
 
+  function selectMany(ids) {
+    setSelectedIds(ids)
+  }
+
+  // Grow or shrink the selected items around their centres
+  function scaleSelected(factor) {
+    if (!hasSelection) return
+    const moves = {}
+    selection.forEach((el) => {
+      if (el.type === 'image' || el.type === 'shape') {
+        const box = scaleBox(el, factor, el.type === 'image' ? 20 : 1, 4000)
+        moves[el.id] = box
+      } else {
+        const node = document.querySelector(`[data-id="${el.id}"]`)
+        const size = Math.round(Math.min(400, Math.max(8, el.fontSize * factor)))
+        const ratio = size / el.fontSize
+        const w = node ? node.offsetWidth : 0
+        const h = node ? node.offsetHeight : 0
+        moves[el.id] = {
+          fontSize: size,
+          x: Math.round(el.x + (w - w * ratio) / 2),
+          y: Math.round(el.y + (h - h * ratio) / 2),
+        }
+      }
+    })
+    moveElements(moves, 'scale-' + selection.map((el) => el.id).join('+'))
+  }
+
+  function rotateSelected(degrees) {
+    const moves = {}
+    selection.forEach((el) => {
+      moves[el.id] = { rotation: normalizeAngle(el.rotation + degrees) }
+    })
+    moveElements(moves, 'turn')
+  }
+
+  // Make selected pictures fit inside the poster, or fill it completely
+  function arrangeImages(mode) {
+    const moves = {}
+    selection.forEach((el) => {
+      if (el.type === 'image') {
+        moves[el.id] = { ...fitRect(el.width, el.height, poster.width, poster.height, mode), rotation: 0 }
+      }
+    })
+    moveElements(moves)
+    notify(mode === 'fill' ? 'Picture fills the poster' : 'Picture fits the poster')
+  }
+
   // Lines items up against the poster edges (with a margin) or its centre
   function align(where) {
     const moves = {}
@@ -264,7 +280,7 @@ function App() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ starterId, elements, poster, savedAt: Date.now() }))
       notify('Saved')
     } catch (e) {
-      notify('Could not save')
+      notify('Browser storage is full. Try fewer or smaller pictures.')
     }
   }
 
@@ -290,7 +306,7 @@ function App() {
       setLibrary(next)
       notify(existing ? 'Replaced "' + name + '"' : 'Saved "' + name + '"')
     } catch (e) {
-      notify('Could not save')
+      notify('Browser storage is full. Try fewer or smaller pictures.')
     }
   }
 
@@ -321,6 +337,10 @@ function App() {
     for (const file of files) {
       try {
         const picture = await readImage(file)
+        if (!hasRoomFor([...elements, ...added.filter(Boolean)], picture.src)) {
+          notify('No room for that picture. A poster holds about ' + IMAGE_BUDGET / 1000000 + ' MB of pictures.')
+          continue
+        }
         // fit it inside most of the poster, centred, nudging each extra one
         const fit = Math.min((poster.width * 0.7) / picture.width, (poster.height * 0.7) / picture.height, 1)
         const width = Math.round(picture.width * fit)
@@ -347,6 +367,20 @@ function App() {
     setSelectedIds(good.map((el) => el.id))
     setTab('style')
     notify(good.length > 1 ? good.length + ' images added' : 'Image added')
+  }
+
+  // Arrow keys, Home and End move between the tabs
+  function onTabKey(e, id) {
+    const index = TABS.findIndex(([tabId]) => tabId === id)
+    let next = null
+    if (e.key === 'ArrowRight') next = (index + 1) % TABS.length
+    if (e.key === 'ArrowLeft') next = (index + TABS.length - 1) % TABS.length
+    if (e.key === 'Home') next = 0
+    if (e.key === 'End') next = TABS.length - 1
+    if (next === null) return
+    e.preventDefault()
+    setTab(TABS[next][0])
+    setTimeout(() => document.getElementById('tab-' + TABS[next][0])?.focus(), 0)
   }
 
   function toggleGrid() {
@@ -411,6 +445,15 @@ function App() {
       } else if (key === 'delete' || key === 'backspace') {
         e.preventDefault()
         remove()
+      } else if (key === '+' || key === '=') {
+        e.preventDefault()
+        scaleSelected(1.1)
+      } else if (key === '-' || key === '_') {
+        e.preventDefault()
+        scaleSelected(1 / 1.1)
+      } else if (key === 'r') {
+        e.preventDefault()
+        rotateSelected(e.shiftKey ? -15 : 15)
       } else if (key === ']') {
         moveLayer(1)
       } else if (key === '[') {
@@ -479,21 +522,28 @@ function App() {
           onSelect={select}
           onMove={moveElements}
           onEdit={editText}
+          onSelectMany={selectMany}
           onDropFiles={addImages}
         />
         <aside className="sidebar">
-          <div className="tabs" role="tablist">
-            {[
-              ['style', 'Style'],
-              ['layers', 'Layers'],
-              ['posters', 'Posters'],
-            ].map(([id, label]) => (
-              <button key={id} role="tab" aria-selected={tab === id} className="tab" onClick={() => setTab(id)}>
+          <div className="tabs" role="tablist" aria-label="Side panel">
+            {TABS.map(([id, label]) => (
+              <button
+                key={id}
+                id={'tab-' + id}
+                role="tab"
+                aria-selected={tab === id}
+                aria-controls="side-panel"
+                tabIndex={tab === id ? 0 : -1}
+                className="tab"
+                onClick={() => setTab(id)}
+                onKeyDown={(e) => onTabKey(e, id)}
+              >
                 {label}
               </button>
             ))}
           </div>
-          <div className="sidebar-body">
+          <div className="sidebar-body" id="side-panel" role="tabpanel" aria-labelledby={'tab-' + tab}>
             {tab === 'style' && (
               <Properties
                 selection={selection}
@@ -508,6 +558,9 @@ function App() {
                 }
                 onPosterChange={changePoster}
                 onAlign={align}
+                onScale={scaleSelected}
+                onFit={arrangeImages}
+                imageBytes={imagesSize(elements)}
               />
             )}
             {tab === 'layers' && (
@@ -541,11 +594,9 @@ function App() {
           e.target.value = ''
         }}
       />
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
-        </div>
-      )}
+      <div className="toast-region" role="status" aria-live="polite">
+        {toast && <div className="toast">{toast}</div>}
+      </div>
     </div>
   )
 }

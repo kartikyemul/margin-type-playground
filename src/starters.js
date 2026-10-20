@@ -163,6 +163,13 @@ export const STARTERS = [
   },
 ]
 
+// A short name for an item, used in the layers list and for screen readers
+export function describe(el) {
+  if (el.type === 'image') return 'Image'
+  if (el.type === 'shape') return el.kind === 'rule' ? 'Rule' : 'Block'
+  return el.text.split('\n')[0].trim() || 'Empty text'
+}
+
 export function buildElements(starterId) {
   const starter = STARTERS.find((s) => s.id === starterId) || STARTERS[0]
   return starter.elements.map((el) => makeItem(el))

@@ -1,3 +1,15 @@
+// How much picture data one poster may hold (counted in characters of stored text),
+// so saving doesn't run into the browser's storage limit.
+export const IMAGE_BUDGET = 3000000
+
+export function imagesSize(elements) {
+  return elements.reduce((sum, el) => (el.type === 'image' ? sum + el.src.length : sum), 0)
+}
+
+export function hasRoomFor(elements, src) {
+  return imagesSize(elements) + src.length <= IMAGE_BUDGET
+}
+
 const MAX_SIDE = { 'image/jpeg': 1800, 'image/png': 1400 }
 const TYPES = ['image/png', 'image/jpeg', 'image/webp']
 
