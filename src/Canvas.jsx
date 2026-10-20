@@ -1,33 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import { HIGHLIGHT, MARGIN, fontStack } from './constants.js'
+import { HIGHLIGHT, fontStack } from './constants.js'
+import { describe } from './starters.js'
+import { normalizeAngle, rectsOverlap, snapAxis, snapToGrid } from './geometry.js'
 
 const SHAPE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 const TEXT_HANDLES = ['nw', 'ne', 'se', 'sw']
 
 const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' }
 
-// Snap one axis: the element's start, middle or end can lock onto the margin or the centre.
-function snapAxis(pos, size, total, threshold) {
-  const options = [
-    { at: pos, goal: MARGIN },
-    { at: pos + size / 2, goal: total / 2 },
-    { at: pos + size, goal: total - MARGIN },
-  ]
-  let best = null
-  options.forEach((o) => {
-    const diff = o.goal - o.at
-    if (Math.abs(diff) <= threshold && (!best || Math.abs(diff) < Math.abs(best.diff))) {
-      best = { diff, goal: o.goal }
-    }
-  })
-  return best ? { pos: pos + best.diff, guide: best.goal } : { pos, guide: null }
-}
-
-function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDropFiles }) {
+function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove, onEdit, onDropFiles }) {
   const stageRef = useRef(null)
   const drag = useRef(null)
   const handleDrag = useRef(null)
   const dragCount = useRef(0)
+  const marquee = useRef(null)
+  const [marqueeBox, setMarqueeBox] = useState(null)
   const [scale, setScale] = useState(0.7)
   const [guides, setGuides] = useState({ x: null, y: null })
 
@@ -99,8 +86,8 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
       guideX = sx.guide
       guideY = sy.guide
       // no guide nearby, so fall back to the grid if it's switched on
-      if (grid && guideX === null) x = Math.round(x / grid) * grid
-      if (grid && guideY === null) y = Math.round(y / grid) * grid
+      if (guideX === null) x = snapToGrid(x, grid)
+      if (guideY === null) y = snapToGrid(y, grid)
     }
     setGuides({ x: guideX, y: guideY })
 
@@ -152,7 +139,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
 
     if (d.kind === 'rotate') {
       let deg = (Math.atan2(e.clientY - d.cy, e.clientX - d.cx) * 180) / Math.PI + 90
-      deg = ((((deg + 180) % 360) + 360) % 360) - 180
+      deg = normalizeAngle(deg)
       if (e.shiftKey) deg = Math.round(deg / 15) * 15
       onMove({ [d.el.id]: { rotation: Math.round(deg) } }, 'rotate-' + d.session)
       return
@@ -211,8 +198,74 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
     handleDrag.current = null
   }
 
+  // Dragging on empty space draws a box and selects whatever it touches
+  function startMarquee(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    if (!e.shiftKey) onSelect(null)
+    marquee.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      base: e.shiftKey ? selectedIds : [],
+      moved: false,
+      last: '',
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  function moveMarquee(e) {
+    const m = marquee.current
+    if (!m) return
+    if (!m.moved && Math.hypot(e.clientX - m.startX, e.clientY - m.startY) < 4) return
+    m.moved = true
+
+    const box = {
+      left: Math.min(m.startX, e.clientX),
+      top: Math.min(m.startY, e.clientY),
+      right: Math.max(m.startX, e.clientX),
+      bottom: Math.max(m.startY, e.clientY),
+    }
+    const stage = stageRef.current.getBoundingClientRect()
+    setMarqueeBox({ left: box.left - stage.left, top: box.top - stage.top, width: box.right - box.left, height: box.bottom - box.top })
+
+    const hits = []
+    stageRef.current.querySelectorAll('.item').forEach((node) => {
+      if (rectsOverlap(box, node.getBoundingClientRect())) hits.push(node.dataset.id)
+    })
+    const ids = [...new Set([...m.base, ...hits])]
+    const key = ids.join(',')
+    if (key !== m.last) {
+      m.last = key
+      onSelectMany(ids)
+    }
+  }
+
+  function endMarquee() {
+    marquee.current = null
+    setMarqueeBox(null)
+  }
+
   function itemProps(el) {
+    const label = el.type === 'shape' || el.type === 'image' ? describe(el) : 'Text: ' + describe(el)
+    const canEdit = el.type !== 'shape' && el.type !== 'image'
     return {
+      role: 'button',
+      tabIndex: 0,
+      'aria-label': label,
+      'aria-pressed': selectedIds.includes(el.id),
+      onFocus: (e) => {
+        // tabbing onto an item selects it; clicking already handles its own selection
+        if (e.currentTarget.matches(':focus-visible') && !selectedIds.includes(el.id)) onSelect(el.id)
+      },
+      onKeyDown: (e) => {
+        if (e.key === ' ') {
+          e.preventDefault()
+          onSelect(el.id, e.shiftKey)
+        } else if (e.key === 'Enter' && canEdit) {
+          e.preventDefault()
+          onSelect(el.id)
+          onEdit()
+        }
+      },
       'data-id': el.id,
       onPointerDown: (e) => startDrag(e, el),
       onPointerMove: moveDrag,
@@ -234,17 +287,19 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
 
     return (
       <>
-        <div className="rotate-line" style={{ top: -reach, height: reach, width: 1 / scale }} />
+        <div className="rotate-line" aria-hidden="true" style={{ top: -reach, height: reach, width: 1 / scale }} />
         <div
           className="handle rotate"
           style={{ left: '50%', top: -reach, width: size, height: size }}
           title="Rotate (hold Shift for 15° steps)"
+          aria-hidden="true"
           {...handleProps('rotate')}
         />
         {dirs.map((dir) => (
           <div
             key={dir}
             className="handle"
+            aria-hidden="true"
             style={{
               left: dir.includes('w') ? 0 : dir.includes('e') ? '100%' : '50%',
               top: dir.includes('n') ? 0 : dir.includes('s') ? '100%' : '50%',
@@ -265,7 +320,12 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
     <div
       className="stage"
       ref={stageRef}
-      onPointerDown={() => onSelect(null)}
+      role="region"
+      aria-label="Poster canvas. Tab moves between items, arrow keys nudge, plus and minus resize, R rotates."
+      onPointerDown={startMarquee}
+      onPointerMove={moveMarquee}
+      onPointerUp={endMarquee}
+      onPointerCancel={endMarquee}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
@@ -275,6 +335,8 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
       <div className="poster-frame" style={{ width: poster.width * scale + 2, height: poster.height * scale + 2 }}>
         <div
           className="poster"
+          role="group"
+          aria-label={`Poster, ${poster.width} by ${poster.height}, ${elements.filter((el) => !el.hidden).length} items`}
           style={{
             width: poster.width,
             height: poster.height,
@@ -375,6 +437,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onMove, onEdit, onDro
           {guides.y !== null && <div className="guide guide-h" style={{ top: guides.y }} />}
         </div>
       </div>
+      {marqueeBox && <div className="marquee" style={marqueeBox} />}
     </div>
   )
 }

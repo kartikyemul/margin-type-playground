@@ -130,6 +130,7 @@ textarea {
 }
 
 .stage {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -579,4 +580,33 @@ kbd {
   height: 100%;
   pointer-events: none;
   user-select: none;
+}
+
+.marquee {
+  position: absolute;
+  border: 1px solid #000;
+  background: rgba(255, 233, 74, 0.35);
+  pointer-events: none;
+}
+
+.item:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 3px;
+}
+
+.tab:focus-visible {
+  outline-offset: -4px;
+}
+
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast-region .toast {
+  position: static;
+  transform: none;
 }
