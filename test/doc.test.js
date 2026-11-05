@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanDoc, cleanPoster, keepPrefs } from '../src/doc.js'
+import { cleanDoc, cleanPoster, expandGroups, keepPrefs } from '../src/doc.js'
 import { DEFAULT_POSTER } from '../src/constants.js'
 import { STARTERS, buildElements, buildPoster, makeText, makeShape, makeItem, describe } from '../src/starters.js'
 
@@ -109,4 +109,35 @@ test('describe gives each item a readable name', () => {
   assert.equal(describe(makeShape({ kind: 'rule' })), 'Rule')
   assert.equal(describe(makeShape({ kind: 'block' })), 'Block')
   assert.equal(describe(makeItem({ type: 'image', src: TINY_PNG })), 'Image')
+})
+
+test('text box fields are tidied, and old posters get sensible defaults', () => {
+  const [a, b, c] = cleanDoc({
+    elements: [
+      { text: 'x', boxWidth: 'wide', paragraphSpacing: 99, align: 'justify', locked: 'yes', group: 5 },
+      { text: 'y', boxWidth: 5 },
+      { text: 'z', boxWidth: 240, group: 'g1', locked: true },
+    ],
+  }).elements
+  assert.equal(a.boxWidth, 0)
+  assert.equal(a.paragraphSpacing, 3)
+  assert.equal(a.align, 'justify')
+  assert.equal(a.locked, false)
+  assert.equal(a.group, '')
+  assert.equal(b.boxWidth, 0)
+  assert.equal(c.boxWidth, 240)
+  assert.equal(c.locked, true)
+  assert.equal(c.group, 'g1')
+})
+
+test('expandGroups selects every member of a group', () => {
+  const els = [
+    { id: 'a', group: 'g' },
+    { id: 'b', group: 'g' },
+    { id: 'c', group: '' },
+    { id: 'd', group: 'h' },
+  ]
+  assert.deepEqual(expandGroups(['a'], els).sort(), ['a', 'b'])
+  assert.deepEqual(expandGroups(['c'], els), ['c'])
+  assert.deepEqual(expandGroups(['a', 'd'], els).sort(), ['a', 'b', 'd'])
 })

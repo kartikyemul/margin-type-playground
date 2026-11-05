@@ -1,11 +1,15 @@
 export const HIGHLIGHT = '#ffe94a'
 export const MARGIN = 40
 
-export const FORMATS = [
+export const PRESETS = [
   { name: 'Portrait', width: 600, height: 800 },
   { name: 'Square', width: 600, height: 600 },
-  { name: 'Story', width: 450, height: 800 },
   { name: 'Landscape', width: 800, height: 600 },
+  { name: 'Story', width: 450, height: 800 },
+  { name: 'Phone wallpaper', width: 390, height: 844 },
+  { name: 'Instagram post', width: 540, height: 675 },
+  { name: 'A4', width: 595, height: 842 },
+  { name: 'A3', width: 842, height: 1191 },
 ]
 
 export const DEFAULT_POSTER = {

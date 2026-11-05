@@ -25,13 +25,17 @@ export function makeText(props = {}) {
     fontSize: num(t.fontSize, 48, 4, 600),
     fontWeight: [400, 700, 900].includes(t.fontWeight) ? t.fontWeight : 700,
     color: cleanColor(t.color, '#000000'),
-    align: ['left', 'center', 'right'].includes(t.align) ? t.align : 'left',
+    align: ['left', 'center', 'right', 'justify'].includes(t.align) ? t.align : 'left',
+    boxWidth: num(t.boxWidth, 0, 0, 5000) >= 20 ? num(t.boxWidth, 0, 0, 5000) : 0,
+    paragraphSpacing: num(t.paragraphSpacing, 0, 0, 3),
     rotation: num(t.rotation, 0, -360, 360),
     letterSpacing: num(t.letterSpacing, 0, -1, 2),
     lineHeight: num(t.lineHeight, 1.1, 0.5, 4),
     italic: t.italic === true,
     uppercase: t.uppercase === true,
     hidden: t.hidden === true,
+    locked: t.locked === true,
+    group: typeof t.group === 'string' ? t.group.slice(0, 40) : '',
     highlight: t.highlight === true,
   }
 }
@@ -49,6 +53,8 @@ export function makeShape(props = {}) {
     color: cleanColor(t.color, '#000000'),
     rotation: num(t.rotation, 0, -360, 360),
     hidden: t.hidden === true,
+    locked: t.locked === true,
+    group: typeof t.group === 'string' ? t.group.slice(0, 40) : '',
   }
 }
 
@@ -68,6 +74,8 @@ export function makeImage(props = {}) {
     rotation: num(t.rotation, 0, -360, 360),
     opacity: num(t.opacity, 1, 0.05, 1),
     hidden: t.hidden === true,
+    locked: t.locked === true,
+    group: typeof t.group === 'string' ? t.group.slice(0, 40) : '',
   }
 }
 

@@ -1,4 +1,5 @@
-import { FONTS, FORMATS } from './constants.js'
+import { useEffect, useState } from 'react'
+import { FONTS, PRESETS } from './constants.js'
 import { IMAGE_BUDGET } from './images.js'
 
 const WEIGHTS = [
@@ -11,6 +12,7 @@ const ALIGNMENTS = [
   { label: 'Left', value: 'left' },
   { label: 'Center', value: 'center' },
   { label: 'Right', value: 'right' },
+  { label: 'Justify', value: 'justify' },
 ]
 
 const COLORS = ['#000000', '#8a8a8a', '#d62828', '#1f3fd1', '#ffe94a']
@@ -36,30 +38,81 @@ const SHORTCUTS = [
   ['Ctrl S', 'Save'],
   ['Esc', 'Deselect'],
   ['Alt drag', 'Move without snapping'],
+  ['L', 'Lock or unlock'],
+  ['Ctrl G', 'Group (Shift to ungroup)'],
+  ['Ctrl scroll', 'Zoom'],
+  ['0  1', 'Fit, or 100% zoom'],
+  ['Space drag', 'Pan around'],
   ['Shift rotate', 'Turn in 15° steps'],
 ]
 
+function SizeInputs({ poster, onPosterChange }) {
+  const [w, setW] = useState(String(poster.width))
+  const [h, setH] = useState(String(poster.height))
+
+  useEffect(() => {
+    setW(String(poster.width))
+    setH(String(poster.height))
+  }, [poster.width, poster.height])
+
+  // applied when you leave a box or press Enter, so typing "1" on the way to "1080" isn't a problem
+  function apply() {
+    const fix = (value, old) => Math.round(Math.min(2000, Math.max(200, Number(value) || old)))
+    const width = fix(w, poster.width)
+    const height = fix(h, poster.height)
+    setW(String(width))
+    setH(String(height))
+    if (width !== poster.width || height !== poster.height) onPosterChange({ width, height })
+  }
+
+  const enter = (e) => e.key === 'Enter' && e.target.blur()
+
+  return (
+    <>
+      <div className="size-inputs">
+        <label className="visually-hidden" htmlFor="poster-w">
+          Width in pixels
+        </label>
+        <input id="poster-w" type="number" min="200" max="2000" value={w} onChange={(e) => setW(e.target.value)} onBlur={apply} onKeyDown={enter} />
+        <span aria-hidden="true">×</span>
+        <label className="visually-hidden" htmlFor="poster-h">
+          Height in pixels
+        </label>
+        <input id="poster-h" type="number" min="200" max="2000" value={h} onChange={(e) => setH(e.target.value)} onBlur={apply} onKeyDown={enter} />
+        <span className="unit">px</span>
+      </div>
+      <p className="hint small top">Any size from 200 to 2000 px.</p>
+    </>
+  )
+}
+
 function PosterSettings({ poster, onPosterChange, imageBytes }) {
-  const format = FORMATS.find((f) => f.width === poster.width && f.height === poster.height) || FORMATS[0]
+  const preset = PRESETS.find((f) => f.width === poster.width && f.height === poster.height)
 
   return (
     <>
       <div className="field">
-        <label htmlFor="format">Poster format</label>
+        <label htmlFor="format">Poster size</label>
         <select
           id="format"
-          value={format.name}
+          value={preset ? preset.name : 'Custom'}
           onChange={(e) => {
-            const f = FORMATS.find((x) => x.name === e.target.value)
-            onPosterChange({ width: f.width, height: f.height })
+            const f = PRESETS.find((x) => x.name === e.target.value)
+            if (f) onPosterChange({ width: f.width, height: f.height })
           }}
         >
-          {FORMATS.map((f) => (
+          {PRESETS.map((f) => (
             <option key={f.name} value={f.name}>
               {f.name} ({f.width} × {f.height})
             </option>
           ))}
+          {!preset && (
+            <option value="Custom">
+              Custom ({poster.width} × {poster.height})
+            </option>
+          )}
         </select>
+        <SizeInputs poster={poster} onPosterChange={onPosterChange} />
       </div>
 
       <div className="field">
@@ -146,7 +199,7 @@ function PosterSettings({ poster, onPosterChange, imageBytes }) {
   )
 }
 
-function Properties({ selection, poster, textRef, onChange, onPosterChange, onAlign, onScale, onFit, imageBytes }) {
+function Properties({ selection, poster, textRef, onChange, onPosterChange, onAlign, onScale, onFit, onToggleBox, onGroup, onUngroup, onLock, imageBytes }) {
   if (selection.length === 0) {
     return (
       <div>
@@ -216,6 +269,19 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
           <button onClick={() => onScale(1.1)} aria-label="Make larger">
             Larger
           </button>
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="label">Arrange</span>
+        <div className="segmented" role="group" aria-label="Group and lock">
+          <button onClick={onGroup} disabled={selection.length < 2}>
+            Group
+          </button>
+          <button onClick={onUngroup} disabled={!selection.some((el) => el.group)}>
+            Ungroup
+          </button>
+          <button onClick={onLock}>{selection.every((el) => el.locked) ? 'Unlock' : 'Lock'}</button>
         </div>
       </div>
 
@@ -304,6 +370,40 @@ function Properties({ selection, poster, textRef, onChange, onPosterChange, onAl
               step="0.05"
               value={text.lineHeight}
               onChange={(e) => onChange({ lineHeight: Number(e.target.value) }, 'leading')}
+            />
+          </div>
+
+          <div className="field">
+            <label className="check">
+              <input type="checkbox" checked={Boolean(text.boxWidth)} onChange={onToggleBox} />
+              Fixed width box (text wraps)
+            </label>
+          </div>
+
+          {text.boxWidth > 0 && (
+            <div className="field">
+              <label htmlFor="boxwidth">Box width {text.boxWidth}</label>
+              <input
+                id="boxwidth"
+                type="range"
+                min="40"
+                max={Math.max(poster.width, text.boxWidth)}
+                value={text.boxWidth}
+                onChange={(e) => onChange({ boxWidth: Number(e.target.value) }, 'boxwidth')}
+              />
+            </div>
+          )}
+
+          <div className="field">
+            <label htmlFor="paragraph">Paragraph spacing {text.paragraphSpacing.toFixed(1)}</label>
+            <input
+              id="paragraph"
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={text.paragraphSpacing}
+              onChange={(e) => onChange({ paragraphSpacing: Number(e.target.value) }, 'paragraph')}
             />
           </div>
 

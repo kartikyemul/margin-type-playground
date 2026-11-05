@@ -41,3 +41,13 @@ export function cleanDoc(data) {
       .filter(Boolean),
   }
 }
+
+// Selecting one item of a group selects the whole group
+export function expandGroups(ids, elements) {
+  const groups = new Set(elements.filter((el) => ids.includes(el.id) && el.group).map((el) => el.group))
+  const out = new Set(ids)
+  elements.forEach((el) => {
+    if (el.group && groups.has(el.group)) out.add(el.id)
+  })
+  return [...out]
+}

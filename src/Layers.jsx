@@ -1,6 +1,6 @@
 import { describe } from './starters.js'
 
-function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
+function Layers({ elements, selectedIds, onSelect, onToggle, onMove, onToggleLock }) {
   if (elements.length === 0) {
     return <p className="hint">Nothing here yet. Add some text, an image, a rule or a block from the toolbar.</p>
   }
@@ -18,6 +18,8 @@ function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
             <li key={el.id} className={'row' + (current ? ' current' : '') + (el.hidden ? ' off' : '')}>
               <button className="row-name" aria-pressed={current} onClick={(e) => onSelect(el.id, e.shiftKey)}>
                 {describe(el)}
+                {el.group ? ' · group' : ''}
+                {el.locked ? ' · locked' : ''}
               </button>
               <button className="mini" onClick={() => onMove(el.id, 1)} disabled={index === last} aria-label={'Bring ' + describe(el) + ' forward'}>
                 Up
@@ -27,6 +29,9 @@ function Layers({ elements, selectedIds, onSelect, onToggle, onMove }) {
               </button>
               <button className="mini" aria-label={(el.hidden ? 'Show ' : 'Hide ') + describe(el)} onClick={() => onToggle(el.id)}>
                 {el.hidden ? 'Show' : 'Hide'}
+              </button>
+              <button className="mini" aria-label={(el.locked ? 'Unlock ' : 'Lock ') + describe(el)} onClick={() => onToggleLock(el.id)}>
+                {el.locked ? 'Unlock' : 'Lock'}
               </button>
             </li>
           )
