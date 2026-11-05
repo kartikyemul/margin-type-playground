@@ -6,13 +6,16 @@ import Layers from './Layers.jsx'
 import Library from './Library.jsx'
 import { STARTERS, buildElements, buildPoster, makeImage, makeShape, makeText, newId } from './starters.js'
 import { IMAGE_BUDGET, hasRoomFor, imagesSize, readImage } from './images.js'
-import { cleanDoc, keepPrefs } from './doc.js'
+import { cleanDoc, expandGroups, keepPrefs } from './doc.js'
+import { addVersion, dueForSnapshot, timeLabel } from './versions.js'
 import { fitRect, normalizeAngle, scaleBox } from './geometry.js'
 import { exportPng } from './exportPng.js'
 import { MARGIN } from './constants.js'
 
 const STORAGE_KEY = 'margin-composition'
 const LIBRARY_KEY = 'margin-library'
+const AUTOSAVE_KEY = 'margin-autosave'
+const VERSIONS_KEY = 'margin-versions'
 
 const TABS = [
   ['style', 'Style'],
@@ -25,6 +28,26 @@ function loadSaved() {
     return cleanDoc(JSON.parse(localStorage.getItem(STORAGE_KEY)))
   } catch (e) {
     return null
+  }
+}
+
+function loadAutosave() {
+  try {
+    return cleanDoc(JSON.parse(localStorage.getItem(AUTOSAVE_KEY)))
+  } catch (e) {
+    return null
+  }
+}
+
+function loadVersions() {
+  try {
+    const list = JSON.parse(localStorage.getItem(VERSIONS_KEY))
+    if (!Array.isArray(list)) return []
+    return list
+      .map((item) => ({ ...item, ...cleanDoc(item), savedAt: Number(item.savedAt) || Date.now(), label: String(item.label || '').slice(0, 60) }))
+      .filter((item) => Array.isArray(item.elements))
+  } catch (e) {
+    return []
   }
 }
 
@@ -43,7 +66,7 @@ function loadLibrary() {
 
 function App() {
   const [initial] = useState(
-    () => loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours'), poster: buildPoster('quiet-hours') }
+    () => loadAutosave() || loadSaved() || { starterId: 'quiet-hours', elements: buildElements('quiet-hours'), poster: buildPoster('quiet-hours') }
   )
   const [starterId, setStarterId] = useState(initial.starterId)
   const [history, setHistory] = useState({
@@ -55,6 +78,10 @@ function App() {
   const [toast, setToast] = useState('')
   const [tab, setTab] = useState('style')
   const [library, setLibrary] = useState(loadLibrary)
+  const [versions, setVersions] = useState(loadVersions)
+  const [autosavedAt, setAutosavedAt] = useState(null)
+  const versionsRef = useRef(versions)
+  versionsRef.current = versions
 
   const textRef = useRef(null)
   const toastTimer = useRef(null)
@@ -64,6 +91,16 @@ function App() {
   const poster = history.doc.poster
   const selection = elements.filter((el) => selectedIds.includes(el.id))
   const hasSelection = selection.length > 0
+  const movable = selection.filter((el) => !el.locked)
+
+  function canMove() {
+    if (!hasSelection) return false
+    if (movable.length === 0) {
+      notify('Unlock it first (press L)')
+      return false
+    }
+    return true
+  }
 
   function notify(message) {
     setToast(message)
@@ -89,8 +126,10 @@ function App() {
   // Click selects one item, shift-click adds or removes it, null clears everything
   function select(id, additive = false) {
     if (id === null) setSelectedIds([])
-    else if (additive) setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
-    else setSelectedIds([id])
+    else if (additive) {
+      const group = expandGroups([id], elements)
+      setSelectedIds((ids) => (group.every((x) => ids.includes(x)) ? ids.filter((x) => !group.includes(x)) : [...new Set([...ids, ...group])]))
+    } else setSelectedIds(expandGroups([id], elements))
   }
 
   function changeElements(ids, changes, key = null) {
@@ -135,7 +174,11 @@ function App() {
 
   function duplicate() {
     if (!hasSelection) return
-    const copies = selection.map((el) => ({ ...el, id: newId(), x: el.x + 20, y: el.y + 20 }))
+    const regroup = {}
+    const copies = selection.map((el) => {
+      if (el.group && !regroup[el.group]) regroup[el.group] = newId()
+      return { ...el, id: newId(), x: el.x + 20, y: el.y + 20, group: el.group ? regroup[el.group] : '', locked: false }
+    })
     commit((doc) => ({ ...doc, elements: [...doc.elements, ...copies] }))
     setSelectedIds(copies.map((el) => el.id))
     notify(copies.length > 1 ? 'Duplicated ' + copies.length + ' items' : 'Duplicated')
@@ -170,14 +213,14 @@ function App() {
   }
 
   function selectMany(ids) {
-    setSelectedIds(ids)
+    setSelectedIds(expandGroups(ids, elements))
   }
 
   // Grow or shrink the selected items around their centres
   function scaleSelected(factor) {
-    if (!hasSelection) return
+    if (!canMove()) return
     const moves = {}
-    selection.forEach((el) => {
+    movable.forEach((el) => {
       if (el.type === 'image' || el.type === 'shape') {
         const box = scaleBox(el, factor, el.type === 'image' ? 20 : 1, 4000)
         moves[el.id] = box
@@ -198,8 +241,9 @@ function App() {
   }
 
   function rotateSelected(degrees) {
+    if (!canMove()) return
     const moves = {}
-    selection.forEach((el) => {
+    movable.forEach((el) => {
       moves[el.id] = { rotation: normalizeAngle(el.rotation + degrees) }
     })
     moveElements(moves, 'turn')
@@ -207,8 +251,9 @@ function App() {
 
   // Make selected pictures fit inside the poster, or fill it completely
   function arrangeImages(mode) {
+    if (!canMove()) return
     const moves = {}
-    selection.forEach((el) => {
+    movable.forEach((el) => {
       if (el.type === 'image') {
         moves[el.id] = { ...fitRect(el.width, el.height, poster.width, poster.height, mode), rotation: 0 }
       }
@@ -219,8 +264,9 @@ function App() {
 
   // Lines items up against the poster edges (with a margin) or its centre
   function align(where) {
+    if (!canMove()) return
     const moves = {}
-    selection.forEach((el) => {
+    movable.forEach((el) => {
       const node = document.querySelector(`[data-id="${el.id}"]`)
       if (!node) return
       const w = node.offsetWidth
@@ -237,6 +283,71 @@ function App() {
     })
     moveElements(moves)
     notify('Aligned')
+  }
+
+  function groupSelected() {
+    if (selection.length < 2) {
+      notify('Select two or more items to group')
+      return
+    }
+    const group = newId()
+    const ids = selection.map((el) => el.id)
+    commit((doc) => ({ ...doc, elements: doc.elements.map((el) => (ids.includes(el.id) ? { ...el, group } : el)) }))
+    notify('Grouped')
+  }
+
+  function ungroupSelected() {
+    const ids = selection.map((el) => el.id)
+    commit((doc) => ({ ...doc, elements: doc.elements.map((el) => (ids.includes(el.id) ? { ...el, group: '' } : el)) }))
+    notify('Ungrouped')
+  }
+
+  function toggleLock(ids = selection.map((el) => el.id)) {
+    if (ids.length === 0) return
+    const lock = !elements.filter((el) => ids.includes(el.id)).every((el) => el.locked)
+    commit((doc) => ({ ...doc, elements: doc.elements.map((el) => (ids.includes(el.id) ? { ...el, locked: lock } : el)) }))
+    notify(lock ? 'Locked' : 'Unlocked')
+  }
+
+  // Switches selected text between growing with its words and wrapping inside a fixed-width box
+  function toggleBox() {
+    const texts = selection.filter((el) => el.type !== 'shape' && el.type !== 'image' && !el.locked)
+    if (texts.length === 0) return
+    const fixed = texts.every((el) => el.boxWidth)
+    const moves = {}
+    texts.forEach((el) => {
+      const node = document.querySelector(`[data-id="${el.id}"]`)
+      const width = Math.min(Math.max(node ? node.offsetWidth : 300, 100), poster.width - 2 * MARGIN)
+      moves[el.id] = { boxWidth: fixed ? 0 : Math.round(width) }
+    })
+    moveElements(moves)
+  }
+
+  function storeVersions(next) {
+    versionsRef.current = next
+    setVersions(next)
+    try {
+      localStorage.setItem(VERSIONS_KEY, JSON.stringify(next))
+    } catch (e) {
+      localStorage.removeItem(VERSIONS_KEY)
+    }
+  }
+
+  // Keeps a copy of the poster as it is now, so you can always come back to it
+  function pushVersion(label) {
+    if (elements.length === 0) return
+    const next = addVersion(versionsRef.current, { label, starterId, elements, poster })
+    if (next !== versionsRef.current) storeVersions(next)
+  }
+
+  function restoreVersion(savedAt) {
+    const item = versions.find((v) => v.savedAt === savedAt)
+    if (!item) return
+    pushVersion('Before going back')
+    setStarterId(item.starterId)
+    commit((doc) => ({ elements: item.elements.map((el) => ({ ...el })), poster: keepPrefs(item.poster, doc.poster) }))
+    setSelectedIds([])
+    notify('Went back to ' + timeLabel(item.savedAt).toLowerCase())
   }
 
   function undo() {
@@ -263,6 +374,7 @@ function App() {
 
   function loadStarter(id) {
     const starter = STARTERS.find((s) => s.id === id)
+    pushVersion('Before loading ' + starter.name)
     setStarterId(id)
     commit((doc) => ({ elements: buildElements(id), poster: keepPrefs(buildPoster(id), doc.poster) }))
     setSelectedIds([])
@@ -270,6 +382,7 @@ function App() {
   }
 
   function reset() {
+    pushVersion('Before reset')
     commit((doc) => ({ elements: buildElements(starterId), poster: keepPrefs(buildPoster(starterId), doc.poster) }))
     setSelectedIds([])
     notify('Reset')
@@ -290,6 +403,7 @@ function App() {
       notify('Nothing saved yet')
       return
     }
+    pushVersion('Before restoring')
     setStarterId(saved.starterId)
     commit((doc) => ({ elements: saved.elements, poster: keepPrefs(saved.poster, doc.poster) }))
     setSelectedIds([])
@@ -313,6 +427,7 @@ function App() {
   function openFromLibrary(id) {
     const item = library.find((entry) => entry.id === id)
     if (!item) return
+    pushVersion('Before opening ' + item.name)
     setStarterId(item.starterId)
     commit((doc) => ({ elements: item.elements.map((el) => ({ ...el })), poster: keepPrefs(item.poster, doc.poster) }))
     setSelectedIds([])
@@ -430,6 +545,10 @@ function App() {
       } else if (mod && key === 'd') {
         e.preventDefault()
         duplicate()
+      } else if (mod && key === 'g') {
+        e.preventDefault()
+        if (e.shiftKey) ungroupSelected()
+        else groupSelected()
       } else if (mod && key === 'a') {
         e.preventDefault()
         setSelectedIds(elements.map((el) => el.id))
@@ -445,6 +564,9 @@ function App() {
       } else if (key === 'delete' || key === 'backspace') {
         e.preventDefault()
         remove()
+      } else if (key === 'l') {
+        e.preventDefault()
+        toggleLock()
       } else if (key === '+' || key === '=') {
         e.preventDefault()
         scaleSelected(1.1)
@@ -463,8 +585,9 @@ function App() {
         const step = e.shiftKey ? (poster.snapGrid ? poster.gridSize : 10) : 1
         const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
         const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
+        if (!canMove()) return
         const moves = {}
-        selection.forEach((el) => {
+        movable.forEach((el) => {
           moves[el.id] = { x: el.x + dx, y: el.y + dy }
         })
         moveElements(moves, 'nudge')
@@ -474,6 +597,24 @@ function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   })
+
+  // Quietly keeps the latest poster in the browser, and every few minutes a version to go back to
+  useEffect(() => {
+    if (history.past.length === 0) return undefined
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ starterId, elements, poster, savedAt: Date.now() }))
+        setAutosavedAt(Date.now())
+      } catch (e) {
+        return
+      }
+      if (elements.length > 0 && dueForSnapshot(versionsRef.current, 180000)) {
+        const next = addVersion(versionsRef.current, { label: 'Autosave', starterId, elements, poster })
+        if (next !== versionsRef.current) storeVersions(next)
+      }
+    }, 1200)
+    return () => clearTimeout(timer)
+  }, [history.doc])
 
   useEffect(() => {
     function onPaste(e) {
@@ -500,6 +641,7 @@ function App() {
         onAdd={addText}
         onAddShape={addShape}
         onAddImage={() => imageInput.current.click()}
+        status={autosavedAt ? 'Autosaved ' + new Date(autosavedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
         exportLabel={poster.exportFormat === 'jpeg' ? 'Export JPG' : 'Export PNG'}
         gridOn={poster.snapGrid}
         onGrid={toggleGrid}
@@ -559,6 +701,10 @@ function App() {
                 onPosterChange={changePoster}
                 onAlign={align}
                 onScale={scaleSelected}
+                onToggleBox={toggleBox}
+                onGroup={groupSelected}
+                onUngroup={ungroupSelected}
+                onLock={() => toggleLock()}
                 onFit={arrangeImages}
                 imageBytes={imagesSize(elements)}
               />
@@ -570,6 +716,7 @@ function App() {
                 onSelect={select}
                 onToggle={(id) => changeElements([id], { hidden: !elements.find((el) => el.id === id).hidden })}
                 onMove={(id, step) => moveLayer(step, id)}
+                onToggleLock={(id) => toggleLock([id])}
               />
             )}
             {tab === 'posters' && (
@@ -578,6 +725,8 @@ function App() {
                 onSave={saveToLibrary}
                 onOpen={openFromLibrary}
                 onDelete={deleteFromLibrary}
+                versions={versions}
+                onRestoreVersion={restoreVersion}
               />
             )}
           </div>

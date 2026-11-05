@@ -8,9 +8,12 @@ Everything runs in your browser. There is no account, no server and nothing is u
 
 - **Text, pictures, rules and blocks.** Drag to move. Select one item to get handles for resizing and rotating (hold Shift to turn in 15° steps).
 - **Pictures.** Add PNG or JPEG files with the Image button, drag them onto the poster, or paste them. They are shrunk when added so a few fit in browser storage, each poster holds about 3 MB of pictures, and a picture can be fitted to or made to fill the poster.
-- **Typography.** Five fonts, size, letter and line spacing, weight, italic, uppercase, alignment, color and highlight.
+- **Typography.** Five fonts, size, letter and line spacing, weight, italic, uppercase, alignment (including justify), color and highlight. Drag a side handle, or tick Fixed width box, and text wraps inside a box with paragraph spacing.
 - **Layout help.** Snap to the centre and margins, an optional grid, align to the poster, multi-select with Shift-click or by dragging a box, and layers you can reorder or hide.
-- **Posters.** Four formats, a background color, a few starter compositions, undo and redo, and named posters saved in your browser.
+- **Posters.** Presets for portrait, square, landscape, story, phone wallpaper, Instagram and A4 or A3, or any size from 200 to 2000 px. Plus a background color, starter compositions, undo and redo, and named posters saved in your browser.
+- **Nothing gets lost.** Your work is autosaved as you go and comes back when you reopen the page, and recent versions are kept so you can go back (Posters tab).
+- **Zoom and pan.** Zoom buttons, Fit and 100%, Ctrl + scroll or a pinch, and hold Space and drag to move around.
+- **Lock and group.** Lock an item so it can't be grabbed or moved, and group items so they select and move together.
 - **Export.** PNG or JPG at 1×, 2× or 3×, with an optional transparent PNG background. Editor controls never appear in the export.
 
 ## Getting started
@@ -44,6 +47,11 @@ On a Mac, use Cmd instead of Ctrl.
 | `Space` | Select the focused item (with Shift, add it to the selection) |
 | `Enter` | Edit the focused text |
 | `Ctrl A` | Select everything |
+| `L` | Lock or unlock the selection |
+| `Ctrl G` / `Ctrl Shift G` | Group, ungroup |
+| `0` / `1` | Fit the poster, or zoom to 100% |
+| `Ctrl` + scroll | Zoom |
+| `Space` + drag | Pan around when zoomed in |
 | `Arrow keys` | Nudge (Shift moves further, or a full grid step when snapping) |
 | `+` / `-` | Make the selection larger or smaller |
 | `R` / `Shift R` | Rotate by 15° |
@@ -76,7 +84,9 @@ src/
   Library.jsx      the Posters tab
   starters.js      starter posters, and tidying of every saved item
   doc.js           cleaning up saved posters
-  geometry.js      snapping, fitting and scaling maths
+  geometry.js      snapping, fitting, scaling and zoom maths
+  layout.js        where text lines break (shared by the screen and the export)
+  versions.js      the recent-versions list
   images.js        reading and shrinking pictures, and the size budget
   exportPng.js     draws the poster to a canvas and downloads it
   constants.js     sizes, fonts and defaults
@@ -93,13 +103,14 @@ Anything read back from storage is cleaned before use (colors, numbers, fonts an
 npm test
 ```
 
-This uses Node's built-in test runner, so there is nothing extra to install. The tests cover the geometry maths, the cleaning of saved data, the starter posters and the picture budget. The interface itself is checked by hand. A quick pass after a change:
+This uses Node's built-in test runner, so there is nothing extra to install. The tests cover the geometry maths, text wrapping and justifying, the cleaning of saved data, groups, the starter posters, the picture budget and the version history. The interface itself is checked by hand. A quick pass after a change:
 
 1. Add text, a picture, a rule and a block, then drag, resize and rotate each.
 2. Drag a box over several items, move them together, then undo.
 3. Turn on Grid and drag with and without Alt held.
 4. Export a PNG and a JPG and open them.
-5. Save, reload the page and check the poster comes back.
+5. Make a change, wait a couple of seconds, reload the page and check the poster comes back on its own.
+   Then load a starter and use Go back in the Posters tab.
 6. Use only the keyboard to select an item, nudge it, resize it and delete it.
 
 ## Contributing
