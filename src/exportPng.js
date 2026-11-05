@@ -1,4 +1,5 @@
-import { HIGHLIGHT, fontStack } from './constants.js'
+import { HIGHLIGHT } from './constants.js'
+import { fontString, layoutText, lineTops, lineWidth } from './layout.js'
 import { downloadBlob } from './download.js'
 
 export async function exportPng(elements, poster) {
@@ -20,7 +21,7 @@ export async function exportPng(elements, poster) {
     await Promise.all(
       visible
         .filter((el) => el.type !== 'shape')
-        .map((el) => document.fonts.load(`${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`, el.text))
+        .map((el) => document.fonts.load(fontString(el), el.text))
     )
   } catch (e) {
     // fall back to whatever fonts are available
@@ -54,10 +55,6 @@ export async function exportPng(elements, poster) {
   downloadBlob(blob, type === 'image/jpeg' ? 'margin-poster.jpg' : 'margin-poster.png')
 }
 
-function fontStyle(el) {
-  return `${el.italic ? 'italic ' : ''}${el.fontWeight}`
-}
-
 function drawPicture(ctx, el, img) {
   if (!img) return
   ctx.save()
@@ -77,34 +74,29 @@ function drawShape(ctx, el) {
   ctx.restore()
 }
 
-function lineWidth(ctx, line, spacing) {
-  if (spacing === 0) return ctx.measureText(line).width
-  return [...line].reduce((sum, ch) => sum + ctx.measureText(ch).width + spacing, 0)
-}
-
-function drawLine(ctx, line, x, y, spacing) {
+function drawLine(ctx, text, x, y, spacing) {
   if (spacing === 0) {
-    ctx.fillText(line, x, y)
+    ctx.fillText(text, x, y)
     return
   }
   let cursor = x
-  for (const ch of line) {
+  for (const ch of text) {
     ctx.fillText(ch, cursor, y)
     cursor += ctx.measureText(ch).width + spacing
   }
 }
 
 function drawText(ctx, el) {
-  const lines = (el.uppercase ? el.text.toUpperCase() : el.text).split('\n')
-  const lineHeight = el.fontSize * el.lineHeight
   const spacing = el.fontSize * el.letterSpacing
-
-  ctx.font = `${fontStyle(el)} ${el.fontSize}px ${fontStack(el.fontFamily)}`
+  ctx.font = fontString(el)
   ctx.textBaseline = 'alphabetic'
 
-  const widths = lines.map((line) => lineWidth(ctx, line, spacing))
-  const blockWidth = Math.max(...widths, 1)
-  const blockHeight = lineHeight * lines.length
+  const measure = (s) => lineWidth(ctx, s, spacing)
+  const lines = layoutText(el, measure)
+  const lineHeight = el.fontSize * el.lineHeight
+  const { tops, height } = lineTops(lines, lineHeight, el.paragraphSpacing * el.fontSize)
+  const widths = lines.map((line) => measure(line.text))
+  const blockWidth = el.boxWidth || Math.max(...widths, 1)
 
   const metrics = ctx.measureText('Hg')
   const ascent = metrics.fontBoundingBoxAscent ?? el.fontSize * 0.8
@@ -112,22 +104,40 @@ function drawText(ctx, el) {
   const baseline = (lineHeight - (ascent + descent)) / 2 + ascent
 
   ctx.save()
-  ctx.translate(el.x + blockWidth / 2, el.y + blockHeight / 2)
+  ctx.translate(el.x + blockWidth / 2, el.y + height / 2)
   ctx.rotate((el.rotation * Math.PI) / 180)
-  ctx.translate(-blockWidth / 2, -blockHeight / 2)
+  ctx.translate(-blockWidth / 2, -height / 2)
 
   lines.forEach((line, i) => {
+    const top = tops[i]
+
+    if (line.justify) {
+      // spread the words so the line reaches both edges of the box
+      const words = line.text.split(' ')
+      const wordWidths = words.map(measure)
+      const gap = (blockWidth - wordWidths.reduce((a, b) => a + b, 0)) / (words.length - 1)
+      if (el.highlight) {
+        ctx.fillStyle = HIGHLIGHT
+        ctx.fillRect(0, top, blockWidth, lineHeight)
+      }
+      ctx.fillStyle = el.color
+      let cursor = 0
+      words.forEach((word, k) => {
+        drawLine(ctx, word, cursor, top + baseline, spacing)
+        cursor += wordWidths[k] + gap
+      })
+      return
+    }
+
     let left = 0
     if (el.align === 'center') left = (blockWidth - widths[i]) / 2
     if (el.align === 'right') left = blockWidth - widths[i]
-    const top = i * lineHeight
-
     if (el.highlight && widths[i] > 0) {
       ctx.fillStyle = HIGHLIGHT
       ctx.fillRect(left, top, widths[i], lineHeight)
     }
     ctx.fillStyle = el.color
-    drawLine(ctx, line, left, top + baseline, spacing)
+    drawLine(ctx, line.text, left, top + baseline, spacing)
   })
 
   ctx.restore()
