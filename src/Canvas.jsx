@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HIGHLIGHT, fontStack } from './constants.js'
 import { describe } from './starters.js'
-import { normalizeAngle, rectsOverlap, snapAxis, snapToGrid } from './geometry.js'
+import { clampZoom, normalizeAngle, rectsOverlap, snapAxis, snapToGrid, stepZoom } from './geometry.js'
+import { layoutText, textMeasurer } from './layout.js'
 
 const SHAPE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
-const TEXT_HANDLES = ['nw', 'ne', 'se', 'sw']
+const TEXT_HANDLES = ['nw', 'ne', 'se', 'sw', 'w', 'e']
+const IMAGE_HANDLES = ['nw', 'ne', 'se', 'sw']
 
 const CURSORS = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize' }
 
@@ -15,7 +17,17 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
   const dragCount = useRef(0)
   const marquee = useRef(null)
   const [marqueeBox, setMarqueeBox] = useState(null)
-  const [scale, setScale] = useState(0.7)
+  const [fitScale, setFitScale] = useState(0.7)
+  const [userScale, setUserScale] = useState(null) // null means "fit to the screen"
+  const [spaceHeld, setSpaceHeld] = useState(false)
+  const [, setFontTick] = useState(0)
+  const scale = userScale ?? fitScale
+  const scaleRef = useRef(scale)
+  const fitRef = useRef(fitScale)
+  const prevScale = useRef(scale)
+  const pan = useRef(null)
+  scaleRef.current = scale
+  fitRef.current = fitScale
   const [guides, setGuides] = useState({ x: null, y: null })
 
   const grid = poster.snapGrid ? poster.gridSize : 0
@@ -24,11 +36,108 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       const fit = Math.min((width - 2) / poster.width, (height - 2) / poster.height)
-      setScale(Math.max(0.2, Math.min(fit, 1.4)))
+      setFitScale(Math.max(0.2, Math.min(fit, 1.4)))
     })
     observer.observe(stageRef.current)
     return () => observer.disconnect()
   }, [poster.width, poster.height])
+
+  // text is measured with the loaded fonts, so lay it out again once they arrive
+  useEffect(() => {
+    const bump = () => setFontTick((t) => t + 1)
+    document.fonts.addEventListener('loadingdone', bump)
+    document.fonts.ready.then(bump)
+    return () => document.fonts.removeEventListener('loadingdone', bump)
+  }, [])
+
+  // keep the middle of the view in place while zooming
+  useLayoutEffect(() => {
+    const stage = stageRef.current
+    const ratio = scale / prevScale.current
+    if (ratio !== 1) {
+      stage.scrollLeft = (stage.scrollLeft + stage.clientWidth / 2) * ratio - stage.clientWidth / 2
+      stage.scrollTop = (stage.scrollTop + stage.clientHeight / 2) * ratio - stage.clientHeight / 2
+    }
+    prevScale.current = scale
+  }, [scale])
+
+  // Ctrl + scroll (or a trackpad pinch) and a two-finger pinch zoom the poster
+  useEffect(() => {
+    const stage = stageRef.current
+    let start = null
+    const gap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    function onWheel(e) {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      setUserScale(clampZoom(scaleRef.current * Math.exp(-e.deltaY * 0.0025)))
+    }
+    function onTouchStart(e) {
+      if (e.touches.length === 2) start = { gap: gap(e.touches), scale: scaleRef.current }
+    }
+    function onTouchMove(e) {
+      if (e.touches.length === 2 && start) {
+        e.preventDefault()
+        setUserScale(clampZoom((start.scale * gap(e.touches)) / start.gap))
+      }
+    }
+    function onTouchEnd(e) {
+      if (e.touches.length < 2) start = null
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    stage.addEventListener('touchstart', onTouchStart, { passive: true })
+    stage.addEventListener('touchmove', onTouchMove, { passive: false })
+    stage.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      stage.removeEventListener('wheel', onWheel)
+      stage.removeEventListener('touchstart', onTouchStart)
+      stage.removeEventListener('touchmove', onTouchMove)
+      stage.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [])
+
+  // 0 fits the poster, 1 shows it at 100%, holding Space lets you drag to pan
+  useEffect(() => {
+    const typing = (e) => ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)
+    function onKeyDown(e) {
+      if (typing(e) || e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === '0') setUserScale(null)
+      if (e.key === '1') setUserScale(1)
+      if (e.key === ' ') setSpaceHeld(true)
+    }
+    const release = () => setSpaceHeld(false)
+    const onKeyUp = (e) => e.key === ' ' && release()
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', release)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', release)
+    }
+  }, [])
+
+  function startPan(e) {
+    if (!spaceHeld && e.button !== 1) return
+    e.preventDefault()
+    e.stopPropagation()
+    const stage = stageRef.current
+    pan.current = { x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop }
+    stage.setPointerCapture(e.pointerId)
+  }
+
+  function movePointer(e) {
+    if (pan.current) {
+      stageRef.current.scrollLeft = pan.current.left - (e.clientX - pan.current.x)
+      stageRef.current.scrollTop = pan.current.top - (e.clientY - pan.current.y)
+      return
+    }
+    moveMarquee(e)
+  }
+
+  function endPointer() {
+    pan.current = null
+    endMarquee()
+  }
 
   function startDrag(e, el) {
     e.stopPropagation()
@@ -173,6 +282,10 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
       h = d.h * ratio
       changes.width = Math.round(w)
       changes.height = Math.round(h)
+    } else if (sy === 0) {
+      // the side handles set the width of a text box, and the text wraps inside it
+      w = Math.max(40, Math.round(d.w + sx * lx))
+      changes.boxWidth = w
     } else {
       // text scales its font size, following the diagonal
       const diagonal = Math.hypot(d.w, d.h)
@@ -182,6 +295,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
       w = d.w * ratio
       h = d.h * ratio
       changes.fontSize = size
+      if (d.el.boxWidth) changes.boxWidth = Math.round(d.el.boxWidth * ratio)
     }
 
     // keep the opposite edge or corner where it was
@@ -225,10 +339,15 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
       bottom: Math.max(m.startY, e.clientY),
     }
     const stage = stageRef.current.getBoundingClientRect()
-    setMarqueeBox({ left: box.left - stage.left, top: box.top - stage.top, width: box.right - box.left, height: box.bottom - box.top })
+    setMarqueeBox({
+      left: box.left - stage.left + stageRef.current.scrollLeft,
+      top: box.top - stage.top + stageRef.current.scrollTop,
+      width: box.right - box.left,
+      height: box.bottom - box.top,
+    })
 
     const hits = []
-    stageRef.current.querySelectorAll('.item').forEach((node) => {
+    stageRef.current.querySelectorAll('.item:not(.locked)').forEach((node) => {
       if (rectsOverlap(box, node.getBoundingClientRect())) hits.push(node.dataset.id)
     })
     const ids = [...new Set([...m.base, ...hits])]
@@ -277,7 +396,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
   function renderHandles(el) {
     const size = 11 / scale
     const reach = 26 / scale
-    const dirs = el.type === 'shape' ? SHAPE_HANDLES : TEXT_HANDLES // text and pictures only scale from the corners
+    const dirs = el.type === 'shape' ? SHAPE_HANDLES : el.type === 'image' ? IMAGE_HANDLES : TEXT_HANDLES
     const handleProps = (kind) => ({
       onPointerDown: (e) => startHandle(e, el, kind),
       onPointerMove: moveHandle,
@@ -317,15 +436,17 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
   const onlyId = selectedIds.length === 1 ? selectedIds[0] : null
 
   return (
+    <div className="stage-wrap">
     <div
-      className="stage"
+      className={'stage' + (spaceHeld ? ' panning' : '')}
       ref={stageRef}
       role="region"
       aria-label="Poster canvas. Tab moves between items, arrow keys nudge, plus and minus resize, R rotates."
+      onPointerDownCapture={startPan}
       onPointerDown={startMarquee}
-      onPointerMove={moveMarquee}
-      onPointerUp={endMarquee}
-      onPointerCancel={endMarquee}
+      onPointerMove={movePointer}
+      onPointerUp={endPointer}
+      onPointerCancel={endPointer}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault()
@@ -358,13 +479,13 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
             .filter((el) => !el.hidden)
             .map((el) => {
               const selected = selectedIds.includes(el.id)
-              const handles = el.id === onlyId ? renderHandles(el) : null
+              const handles = el.id === onlyId && !el.locked ? renderHandles(el) : null
 
               if (el.type === 'image') {
                 return (
                   <div
                     key={el.id}
-                    className={'item image-el' + (selected ? ' selected' : '')}
+                    className={'item image-el' + (selected ? ' selected' : '') + (el.locked ? ' locked' : '')}
                     style={{
                       left: el.x,
                       top: el.y,
@@ -385,7 +506,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
                 return (
                   <div
                     key={el.id}
-                    className={'item shape-el' + (selected ? ' selected' : '')}
+                    className={'item shape-el' + (selected ? ' selected' : '') + (el.locked ? ' locked' : '')}
                     style={{
                       left: el.x,
                       top: el.y,
@@ -404,7 +525,7 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
               return (
                 <div
                   key={el.id}
-                  className={'item text-el' + (selected ? ' selected' : '')}
+                  className={'item text-el' + (selected ? ' selected' : '') + (el.locked ? ' locked' : '')}
                   style={{
                     left: el.x,
                     top: el.y,
@@ -412,9 +533,8 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
                     fontSize: el.fontSize,
                     fontWeight: el.fontWeight,
                     fontStyle: el.italic ? 'italic' : 'normal',
-                    textTransform: el.uppercase ? 'uppercase' : 'none',
                     color: el.color,
-                    textAlign: el.align,
+                    width: el.boxWidth || undefined,
                     letterSpacing: el.letterSpacing + 'em',
                     '--lh': el.lineHeight,
                     transform: `rotate(${el.rotation}deg)`,
@@ -422,10 +542,21 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
                   {...itemProps(el)}
                   onDoubleClick={onEdit}
                 >
-                  {el.text.split('\n').map((line, i) => (
-                    <div className="line" key={i}>
-                      <span className="line-text" style={el.highlight ? { background: HIGHLIGHT } : undefined}>
-                        {line || '\u200b'}
+                  {layoutText(el, textMeasurer(el)).map((line, i) => (
+                    <div
+                      className="line"
+                      key={i}
+                      style={{
+                        textAlign: el.align === 'justify' ? (line.justify ? 'justify' : 'left') : el.align,
+                        textAlignLast: line.justify ? 'justify' : undefined,
+                        marginBottom: line.paraEnd ? el.paragraphSpacing * el.fontSize : undefined,
+                      }}
+                    >
+                      <span
+                        className="line-text"
+                        style={{ ...(el.highlight ? { background: HIGHLIGHT } : {}), ...(line.justify ? { display: 'block' } : {}) }}
+                      >
+                        {line.text || '\u200b'}
                       </span>
                     </div>
                   ))}
@@ -438,6 +569,22 @@ function Canvas({ elements, poster, selectedIds, onSelect, onSelectMany, onMove,
         </div>
       </div>
       {marqueeBox && <div className="marquee" style={marqueeBox} />}
+    </div>
+    <div className="zoombar" role="group" aria-label="Zoom">
+      <button className="mini" aria-label="Zoom out" onClick={() => setUserScale(stepZoom(scale, -1))}>
+        −
+      </button>
+      <span className="zoom-readout">{Math.round(scale * 100)}%</span>
+      <button className="mini" aria-label="Zoom in" onClick={() => setUserScale(stepZoom(scale, 1))}>
+        +
+      </button>
+      <button className="mini" aria-pressed={userScale === null} onClick={() => setUserScale(null)} title="Fit the poster to the screen (0)">
+        Fit
+      </button>
+      <button className="mini" aria-pressed={userScale === 1} onClick={() => setUserScale(1)} title="Actual size (1)">
+        100%
+      </button>
+    </div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { snapAxis, snapToGrid, normalizeAngle, fitRect, scaleBox, rectsOverlap } from '../src/geometry.js'
+import { snapAxis, snapToGrid, normalizeAngle, fitRect, scaleBox, rectsOverlap, clampZoom, stepZoom } from '../src/geometry.js'
 
 test('snapAxis locks onto the margin, centre and far margin when close', () => {
   assert.deepEqual(snapAxis(43, 100, 600, 6), { pos: 40, guide: 40 })
@@ -40,4 +40,12 @@ test('rectsOverlap detects overlapping and separate boxes', () => {
   const a = { left: 0, top: 0, right: 100, bottom: 100 }
   assert.equal(rectsOverlap(a, { left: 50, top: 50, right: 150, bottom: 150 }), true)
   assert.equal(rectsOverlap(a, { left: 100, top: 0, right: 200, bottom: 100 }), false)
+})
+
+test('zoom stays between 10% and 400% and steps in both directions', () => {
+  assert.equal(clampZoom(0.01), 0.1)
+  assert.equal(clampZoom(9), 4)
+  assert.ok(stepZoom(1, 1) > 1)
+  assert.ok(stepZoom(1, -1) < 1)
+  assert.equal(stepZoom(4, 1), 4)
 })

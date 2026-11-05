@@ -53,3 +53,11 @@ export function scaleBox(box, factor, min, max) {
 export function rectsOverlap(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
 }
+
+export function clampZoom(zoom) {
+  return Math.min(4, Math.max(0.1, zoom))
+}
+
+export function stepZoom(zoom, direction) {
+  return clampZoom(direction > 0 ? zoom * 1.25 : zoom / 1.25)
+}
