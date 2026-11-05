@@ -10,6 +10,7 @@ function Toolbar({
   onAddShape,
   onAddImage,
   exportLabel,
+  status,
   gridOn,
   onGrid,
   onDuplicate,
@@ -89,6 +90,8 @@ function Toolbar({
       </label>
 
       <span className="spacer" />
+
+      {status && <span className="status">{status}</span>}
 
       <button className="btn" onClick={onSave} title="Save in this browser (Ctrl S)">
         Save
